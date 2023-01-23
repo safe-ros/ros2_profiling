@@ -1,0 +1,25 @@
+repositories:
+  reference_system:
+    type: git
+    url: https://github.com/safe-ros/reference_system
+    version: main
+  ros2_profiling:
+    type: git
+    url: https://github.com/safe-ros/ros2_profiling
+    version: main
+  topnode:
+    type: git
+    url: https://github.com/safe-ros/topnode
+    version: main 
+  ros2_tracing:
+    type: git
+    url: https://github.com/ros2/ros2_tracing
+    version: message-link-instrumentation
+  tracetools_analysis:
+    type: git
+    url: https://gitlab.com/ros-tracing/tracetools_analysis
+    version: humble
+  cyclonedds:
+    type: git
+    url: https://github.com/christophebedard/cyclonedds
+    version: instrumentation-lttng-update

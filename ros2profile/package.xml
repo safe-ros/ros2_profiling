@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>ros2profile</name>
+  <version>0.0.1</version>
+  <description>ROS 2 CLI package for profiling and aggregating system performance</description>
+  <maintainer email="michael@openrobotics.org">Michael Carroll</maintainer>
+  <license>Apache License 2.0</license>
+
+  <depend>ros2cli</depend>
+  <depend>tracetools_trace</depend>
+  <depend>tracetools_analysis</depend>
+  <depend>topnode</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>python3-pytest-mock</test_depend>
+  <test_depend>ament_mypy</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
