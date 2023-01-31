@@ -11,7 +11,6 @@ class Timer:
         self._node: Node = None
         self._node_handle = None
 
-
         self._rclcpp_init_time = None
         self._rcl_init_time = None
 

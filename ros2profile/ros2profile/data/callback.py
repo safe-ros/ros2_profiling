@@ -65,7 +65,7 @@ class Callback:
         self._rclcpp_init_time = None
 
         self._events: List[CallbackEvent] = []
-
+        self._source = None
 
     def handle(self) -> int:
         return self._handle
@@ -96,9 +96,13 @@ class CallbackEvent:
         self._cpu_id = None
 
         self._trigger = None
+        self._source = None
 
     def trigger(self):
         return self._trigger
+
+    def source(self):
+        return self._source
 
     def handle(self) -> int:
         return self._callback_handle

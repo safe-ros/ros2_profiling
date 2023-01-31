@@ -8,7 +8,23 @@ from .timer import Timer
 
 from typing import List, Dict, Any
 
+import logging
+import os
 import pandas as pd
+import numpy as np
+
+logging.basicConfig()
+logger = logging.getLogger('ros2profile')
+
+try:
+    import coloredlogs
+except ImportError:
+    pass
+else:
+    log_format = os.environ.get(
+            'COLOREDLOGS_LOG_FORMAT', '%(name)s %(levelname)s %(message)s')
+    coloredlogs.install(level=1, logger=logger, fmt=log_format)
+
 
 def build_graph(
         event_data: Dict[str, Any],
@@ -33,27 +49,54 @@ def build_graph(
         _build_subscription_events(ret, event_data)
     if callback_events and subscription_events:
         _associate_subscription_callbacks(ret, event_data)
+    if publish_events and callback_events:
+        _associate_pubsub(ret)
 
+    _associate_subscriptions_to_publishers(ret)
+    _associate_timers_to_publishers(ret)
     return ret
 
 def _build_contexts(graph: Graph, event_data) -> None:
-    for event in event_data['ros2:rcl_init']:
+    context_events = event_data['ros2:rcl_init']
+    logger.debug(f'Building contexts from {len(context_events)} events')
+    for event in context_events:
         graph.add_context(Context(event['context_handle'], event['version']))
+    logger.info(f'Detected {len(graph._contexts)} contexts')
+
 
 def _build_nodes(graph: Graph, event_data) -> None:
-    for event in event_data['ros2:rcl_node_init']:
+    node_events = event_data['ros2:rcl_node_init']
+    logger.debug(f'Building nodes from {len(node_events)} events')
+    for event in node_events:
         node = Node(event['node_handle'], str(event['node_name']),
             str(event['namespace']), event['rmw_handle'])
         graph.add_node(node)
+    logger.info(f'Detected {len(graph._nodes)} nodes')
+
 
 def _build_callbacks(graph: Graph, event_data) -> None:
-    for event in event_data['ros2:rclcpp_callback_register']:
+    callback_events = event_data['ros2:rclcpp_callback_register']
+    logger.debug(f'Building callbacks from {len(callback_events)} register events')
+
+    for event in callback_events:
         callback = Callback(event['callback'], str(event['symbol']))
         callback._rclcpp_init_time = event['_timestamp']
         graph.add_callback(callback)
+    logger.info(f'Detected {len(graph._callbacks)} callbacks')
+
 
 def _build_publishers(graph: Graph, event_data) -> None:
-    for event in event_data['ros2:rcl_publisher_init']:
+    rcl_events = event_data['ros2:rcl_publisher_init']
+    rmw_events = event_data['ros2:rmw_publisher_init']
+    dds_events = event_data['dds:create_writer']
+
+    ss = f'''Building publishers
+    rcl events: {len(rcl_events)}
+    rmw events: {len(rmw_events)}
+    dds events: {len(dds_events)}'''
+    logger.debug(ss)
+
+    for event in rcl_events:
         pub = Publisher(event['publisher_handle'])
         pub._rmw_handle = event['rmw_publisher_handle']
         pub._node_handle = event['node_handle']
@@ -89,15 +132,31 @@ def _build_publishers(graph: Graph, event_data) -> None:
         pub._dds_init_time = event['_timestamp']
         pub._dds_topic_name = event['topic_name']
         pub._dds_writer = event['writer']
+    logger.info(f'Detected {len(graph._publishers)} publishers')
+
 
 def _build_subscriptions(graph: Graph, event_data) -> None:
+    rclcpp_events = event_data['ros2:rclcpp_subscription_init']
+    rclcpp_cb_events = event_data['ros2:rclcpp_subscription_callback_added']
+    rcl_events = event_data['ros2:rcl_subscription_init']
+    rmw_events = event_data['ros2:rmw_subscription_init']
+    dds_events = event_data['dds:create_reader']
+
+    ss = f'''Building subscriptions
+    rclcpp events: {len(rclcpp_events)}
+    rclcpp callback events: {len(rclcpp_cb_events)}
+    rcl events: {len(rcl_events)}
+    rmw events: {len(rmw_events)}
+    dds events: {len(dds_events)}'''
+    logger.debug(ss)
+
     temp_subs = []
-    for event in event_data['ros2:rclcpp_subscription_init']:
+    for event in rclcpp_events:
         sub = Subscription(event['subscription_handle'], event['subscription'])
         sub._rclcpp_init_time = event['_timestamp']
         temp_subs.append(sub)
 
-    for event in event_data['ros2:rcl_subscription_init']:
+    for event in rcl_events:
         sub = None
         for s in temp_subs:
             if s._handle == event['subscription_handle']:
@@ -115,7 +174,7 @@ def _build_subscriptions(graph: Graph, event_data) -> None:
         sub._topic_name = str(event['topic_name'])
         sub._queue_depth = event['queue_depth']
 
-    for event in event_data['ros2:rclcpp_subscription_callback_added']:
+    for event in rclcpp_cb_events:
         sub = None
         for s in temp_subs:
             if s._reference == event['subscription']:
@@ -124,14 +183,12 @@ def _build_subscriptions(graph: Graph, event_data) -> None:
         if sub is None:
             # print("Could not associate subscription callback")
             continue
-
         sub._callback_handle = event['callback']
-
         if sub._callback_handle in graph._callbacks:
             sub._callback = graph._callbacks[sub._callback_handle]
 
 
-    for event in event_data['ros2:rmw_subscription_init']:
+    for event in rmw_events:
         sub = None
         for s in temp_subs:
             if s._rmw_handle == event['rmw_subscription_handle']:
@@ -144,7 +201,7 @@ def _build_subscriptions(graph: Graph, event_data) -> None:
         sub._rmw_init_time = event['_timestamp']
         sub._gid = [*event['gid']][0:16]
 
-    for event in event_data['dds:create_reader']:
+    for event in dds_events:
         sub = None
         for s in temp_subs:
             if s._gid == event['gid']:
@@ -160,6 +217,8 @@ def _build_subscriptions(graph: Graph, event_data) -> None:
 
     for sub in temp_subs:
         graph.add_subscription(sub)
+
+    logger.info(f'Detected {len(graph._subscriptions)} subscriptions')
 
 
 def _build_timers(graph: Graph, event_data) -> None:
@@ -195,6 +254,7 @@ def _build_timers(graph: Graph, event_data) -> None:
 
         if timer._callback_handle in graph._callbacks:
             timer._callback = graph._callbacks[timer._callback_handle]
+            graph._callbacks[timer._callback_handle]._source = timer
 
     for timer in temp_timers:
         graph.add_timer(timer)
@@ -243,6 +303,8 @@ def _build_callback_events(graph: Graph, event_data) -> None:
     for event in events:
         if event.handle() in graph._callbacks:
             graph._callbacks[event.handle()]._events.append(event)
+            if graph._callbacks[event.handle()]._source is not None:
+                event._source = graph._callbacks[event.handle()]._source
         else:
             # print("Could not associate CallbackEvent with Callback")
             pass
@@ -294,18 +356,9 @@ def _build_publish_events(graph: Graph, event_data):
     df['used'] = False
     used_idx = df.columns.get_loc('used')
 
-    print(f'Analyzing {len(df)} publish events, raw counts:')
-    print(f'  rclcpp_publish: {len(event_data["ros2:rclcpp_publish"])}')
-    print(f'  rcl_publish: {len(event_data["ros2:rcl_publish"])}')
-    print(f'  rmw_publish: {len(event_data["ros2:rmw_publish"])}')
-    print(f'  dds_write: {len(event_data["dds:write"])}')
-
     cur_event = None
     publish_events = []
     for idx, row in df.iterrows():
-        if idx % 10000 == 0:
-            print(f'Analyzed {idx} events')
-
         if row['event'] == 'rclcpp_publish':
             cur_event = PublishEvent(row['message'])
             cur_event._vpid = row['vpid']
@@ -342,12 +395,9 @@ def _build_publish_events(graph: Graph, event_data):
             cur_event = None
 
     rclcpp_events_found = len(publish_events)
-    print(f'Found {rclcpp_events_found} complete rclcpp_publish events')
 
     df2 = df[~df['used']].copy()
     df2.reset_index(drop=True, inplace=True)
-
-    print(f'Evaluating {len(df2)} remaining events')
 
     cur_event = None
     for idx, row in df2.iterrows():
@@ -378,11 +428,11 @@ def _build_publish_events(graph: Graph, event_data):
             publish_events.append(cur_event)
             cur_event = None
     rcl_events_found = len(publish_events) - rclcpp_events_found
-    print(f'Found {rcl_events_found} additional rcl_publish only events')
 
     for event in publish_events:
         if event._publisher_handle in graph._publishers:
             graph._publishers[event._publisher_handle]._events.append(event)
+            event._source = graph._publishers[event._publisher_handle]
 
     for publisher in graph._publishers.values():
         publisher._events.sort(key=lambda ev: ev._rcl_init_time)
@@ -453,22 +503,23 @@ def _build_subscription_events(graph: Graph, event_data):
             subscribe_events.append(cur_event)
             cur_event = None
 
-    print(f'Found {len(subscribe_events)} subscription events')
-
     subs_by_rmw = {}
     for sub in graph._subscriptions.values():
         subs_by_rmw[sub._rmw_handle] = sub
 
     for event in subscribe_events:
         subs_by_rmw[event._rmw_subscription_handle]._events.append(event)
+        event._source = subs_by_rmw[event._rmw_subscription_handle]
 
     for subscription in graph._subscriptions.values():
         subscription._events.sort(key=lambda ev: ev._rcl_init_time)
+
 
 def _associate_subscription_callbacks(graph: Graph, event_data):
     for subscription in graph._subscriptions.values():
         sub_events = subscription.events()
         sub_cb_events = subscription.callback().events()
+        subscription.callback()._source = subscription
 
         if len(sub_events) == 0:
             print(f"No events for subscription: {subscription.topic_name()}")
@@ -486,8 +537,10 @@ def _associate_subscription_callbacks(graph: Graph, event_data):
             sub_event._callback = callback_event
             callback_event._trigger = sub_event
 
+            callback_event._source = subscription
+            sub_event._source = subscription
 
-def _associate_pubsub(graph: Graph, event_data):
+def _associate_pubsub(graph: Graph):
     for topic in graph.topics():
         events = []
         if len(topic.subscriptions()) == 0 or len(topic.publishers()) == 0:
@@ -519,3 +572,58 @@ def _associate_pubsub(graph: Graph, event_data):
             elif cur_event and row['type'] == 'pub':
                 cur_event._trigger = topic.publishers()[row['topic_num']].events()[row['event_num']]
                 cur_event = None
+
+
+def _associate_timers_to_publishers(graph: Graph):
+    candidates = []
+    for node in graph.nodes():
+        for timer in node.timers():
+            for publisher in node.publishers():
+                if np.abs(len(timer.callback().events()) - len(publisher.events())) < 5:
+                    candidates.append((timer, publisher))
+
+    logger.debug(f'Found {len(candidates)} candidate publishers in timer callbacks')
+
+    for (timer, publisher) in candidates:
+        starts = [cb.start() for cb in timer.callback().events()]
+        ends = [cb.end() for cb in timer.callback().events()]
+        pubs = [p._rclcpp_init_time for p in publisher.events()]
+        max_idx = min(len(starts), len(pubs))
+        starts = starts[0:max_idx]
+        ends = ends[0:max_idx]
+        pubs = pubs[0:max_idx]
+
+        if not (np.all(pubs > starts) and np.all(pubs < ends)):
+            continue
+
+        for ii, (p, t) in enumerate(zip(publisher.events(), timer.callback().events())):
+            if ii == max_idx:
+                break
+            p._trigger = t
+
+def _associate_subscriptions_to_publishers(graph: Graph):
+    candidates = []
+
+    for node in graph.nodes():
+        for sub in node.subscriptions():
+            for publisher in node.publishers():
+                if np.abs(len(sub.callback().events()) - len(publisher.events())) < 5:
+                    candidates.append((sub, publisher))
+
+    logger.debug(f'Found {len(candidates)} candidate publishers in subscription callbacks')
+
+    for (sub, publisher) in candidates:
+        starts = [cb.start() for cb in sub.callback().events()]
+        ends = [cb.end() for cb in sub.callback().events()]
+        pubs = [p._rclcpp_init_time for p in publisher.events()]
+        max_idx = min(len(starts), len(pubs))
+        starts = starts[0:max_idx]
+        ends = ends[0:max_idx]
+        pubs = pubs[0:max_idx]
+        if not (np.all(pubs > starts) and np.all(pubs < ends)):
+            continue
+
+        for ii, (p, t) in enumerate(zip(publisher.events(), sub.callback().events())):
+            if ii == max_idx:
+                break
+            p._trigger = t

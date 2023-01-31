@@ -23,6 +23,15 @@ class SubscriptionEvent:
 
         self._callback = None
 
+        self._trigger = None
+        self._source = None
+
+    def trigger(self):
+        return self._trigger
+
+    def source(self):
+        return self._source
+
 class Subscription:
     def __init__(self, subscription_handle, subscription_reference):
         self._handle = subscription_handle

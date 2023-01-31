@@ -4,6 +4,7 @@ from .node import Node
 
 from typing import List
 
+
 class PublishEvent:
     def __init__(self, message_handle):
         self._message_handle = message_handle
@@ -18,8 +19,17 @@ class PublishEvent:
         self._dds_init_time = None
         self._dds_timestamp = None
 
+        self._trigger = None
+        self._source = None
+
+    def trigger(self):
+        return self._trigger
+
+    def source(self):
+        return self._source
+
     def __repr__(self) -> str:
-        return f'<PublisherEvent handle={self._message_handle}>'
+        return f'<PublishEvent handle={self._message_handle}>'
 
 class Publisher:
     def __init__(self, publisher_handle):
