@@ -20,9 +20,8 @@ import mcap_ros2.reader
 
 import pandas as pd
 
-from tracetools_analysis.loading import load_file
-from tracetools_analysis.processor.ros2 import Ros2Handler
-from tracetools_analysis.utils.ros2 import Ros2DataModelUtil
+from ros2profile.data.convert.ctf import load_ctf
+from ros2profile.data import build_graph
 
 def process_memory_state(msg):
     return {
@@ -116,8 +115,15 @@ def process(input_path):
             p = pickle.Pickler(f, protocol=4)
             p.dump(data)
 
+    events = load_ctf(input_path)
+    graph = build_graph(events)
 
-def load_files(input_path):
+    with open(os.path.join(input_path, 'event_graph'), 'wb') as f:
+        p = pickle.Pickler(f, protocol=4)
+        p.dump(graph)
+
+
+def load_mcap_data(input_path):
     # Find candidate files
     mcap_files = glob.glob(input_path + '*.mcap')
     data = {}
@@ -128,12 +134,14 @@ def load_files(input_path):
             with open(base + '.converted', 'rb') as f:
                 p = pickle.Unpickler(f)
                 mcap_data = p.load()
-
             data[os.path.basename(base)] = mcap_data
     return data
 
-def load_trace(input_path):
-    events = load_file(os.path.join(input_path, 'ros2profile-tracing-session'))
-    handler = Ros2Handler.process(events)
-    data_util = Ros2DataModelUtil(handler.data)
-    return data_util
+def load_event_graph(input_path):
+    if not os.path.exists(os.path.join(input_path, 'event_graph')):
+        process(input_path)
+
+    with open(os.path.join(input_path, 'event_graph'), 'rb') as f:
+        p = pickle.Unpickler(f)
+        graph_data = p.load()
+    return graph_data
