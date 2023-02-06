@@ -34,7 +34,7 @@ def expand_configuration(profile_config):
     output_dir = get_output_directory(basename)
 
     if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+        os.makedirs(output_dir)
     shutil.copyfile(profile_config, os.path.join(output_dir, 'config.yaml'))
 
     for container_name, container_info in config.containers.items():
