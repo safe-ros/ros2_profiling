@@ -11,6 +11,8 @@
   <depend>tracetools_trace</depend>
   <depend>tracetools_analysis</depend>
   <depend>topnode</depend>
+  <depend>python3-pandas</depend>
+  <depend>mcap-ros2-support</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
