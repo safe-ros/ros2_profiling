@@ -60,7 +60,6 @@ sudo apt-get install python3-babeltrace python3-lttng
 sudo apt-get install lttng-modules-dkms
 ```
 
-
 Additionally, if you're using kernel tracing with a non-root user, make sure that the tracing group exists and that your user is added to it.
 
 ```
@@ -68,6 +67,20 @@ Additionally, if you're using kernel tracing with a non-root user, make sure tha
 sudo groupadd -r tracing
 # Add user to the group
 sudo usermod -aG tracing $USER
+```
+
+#### Note for Ubuntu 22.04
+
+LTTng-UST is not built with SDT support in the package repositories.
+Since message flow analysis makes use of SDT support, it is necessary to build a custom copy of lttng-ust
+
+```
+sudo apt install systemtap-sdt-dev
+git clone https://github.com/lttng/lttng-ust -b stable-2.13
+cd lttng-ust
+./bootstrap
+./configure --with-sdt
+make && make install
 ```
 
 #### Building the workspace
