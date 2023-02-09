@@ -82,6 +82,7 @@ cd ~/safe_ros
 # Download and import repos file
 wget https://raw.githubusercontent.com/safe-ros/ros2_profiling/main/ros2_profiling_demo/demo.repos
 vcs import src < demo.repos 
+rosdep install --from-paths src --ignore-src -r -y
 ```
 
 
