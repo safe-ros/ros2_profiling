@@ -1,90 +1,11 @@
-nodes:
-  - name: cordoba
-    package: reference_system
-    plugin: reference_system::Cordoba
-  - name: freeport
-    package: reference_system
-    plugin: reference_system::Freeport
-  - name: medellin
-    package: reference_system
-    plugin: reference_system::Medellin
-  - name: portsmouth
-    package: reference_system
-    plugin: reference_system::Portsmouth
-  - name: delhi
-    package: reference_system
-    plugin: reference_system::Delhi
-  - name: taipei
-    package: reference_system
-    plugin: reference_system::Taipei
-  - name: lyon
-    package: reference_system
-    plugin: reference_system::Lyon
-  - name: hebron
-    package: reference_system
-    plugin: reference_system::Hebron
-  - name: kingston
-    package: reference_system
-    plugin: reference_system::Kingston
-  - name: hamburg
-    package: reference_system
-    plugin: reference_system::Hamburg
-  - name: osaka
-    package: reference_system
-    plugin: reference_system::Osaka
-  - name: tripoli
-    package: reference_system
-    plugin: reference_system::Tripoli
-  - name: mandalay
-    package: reference_system
-    plugin: reference_system::Mandalay
-  - name: ponce
-    package: reference_system
-    plugin: reference_system::Ponce
-  - name: geneva
-    package: reference_system
-    plugin: reference_system::Geneva
-  - name: monaco
-    package: reference_system
-    plugin: reference_system::Monaco
-  - name: rotterdam
-    package: reference_system
-    plugin: reference_system::Rotterdam
-  - name: barcelona
-    package: reference_system
-    plugin: reference_system::Barcelona
-  - name: arequipa
-    package: reference_system
-    plugin: reference_system::Arequipa
-  - name: georgetown
-    package: reference_system
-    plugin: reference_system::Georgetown
+record_path: ~/.ros/profile
 
-containers:
-  - name: reference_system_robot
-    type: component_container_isolated
-    nodes:
-      - cordoba
-      - freeport
-      - medellin
-      - portsmouth
-      - delhi
-      - taipei
-      - lyon
-      - hebron
-      - kingston
-      - hamburg
-      - osaka
-      - tripoli
-      - mandalay
-      - ponce
+tracing:
+  session_name: ros2profile-tracing-session
+  kernel:
+    events: []
 
-  - name: reference_system_control
-    type: component_container_isolated
-    nodes:
-      - geneva
-      - monaco
-      - rotterdam
-      - barcelona
-      - arequipa
-      - georgetown
+topnode:
+  nodes:
+    - "/reference_system_robot"
+    - "/reference_system_control"
