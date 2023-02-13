@@ -125,7 +125,9 @@ Then launch the demonstration system with the specified configuration:
 
 
 ```
-ros2 profile launch ~/safe_ros/src/ros2_profiling/ros2_profiling_demo/config/reference_system.yaml
+ros2 profile launch \
+  --launch-file ./src/reference_system/launch/reference_system.launch.py \
+  --config-file  ./src/ros2_profiling/ros2_profiling_demo/config/reference_system.yaml
 ```
 
 The `topnode` uses ROS 2 lifecycle states to determine when to start/stop recording, so we can begin the recording via:
