@@ -11,7 +11,9 @@ import launch
 import launch.event_handlers
 from launch.some_actions_type import SomeActionsType
 import launch_ros.actions
+
 from tracetools_launch.action import Trace
+from tracetools_trace.tools import path
 
 
 class LaunchVerb(VerbExtension):
@@ -46,7 +48,7 @@ class LaunchVerb(VerbExtension):
 
         session_name = 'ros2profile-tracing-session'
         base_path = '~/.ros/profile'
-        append_timestamp = True
+        append_timestamp = False
 
         context_fields = {
             'kernel': ['vpid', 'vtid', 'procname'],
@@ -83,6 +85,9 @@ class LaunchVerb(VerbExtension):
 
         basename = os.path.basename(args.config_file)
         basename = basename.split('.')[0]
+
+        basename = path.append_timestamp(basename)
+
         output_dir = os.path.normpath(os.path.expanduser(os.path.join(base_path, basename)))
 
         os.makedirs(output_dir, exist_ok=True)
@@ -101,9 +106,6 @@ class LaunchVerb(VerbExtension):
                      context: launch.launch_context.LaunchContext) -> Optional[SomeActionsType]:
             if event.action.node_name in nodes:
                 pid = event.pid
-                basename = os.path.basename(args.config_file)
-                basename = basename.split('.')[0]
-                output_dir = os.path.normpath(os.path.expanduser(os.path.join(base_path, basename)))
 
                 return launch_ros.actions.Node(
                        name=f'topnode_{pid}',
@@ -117,10 +119,9 @@ class LaunchVerb(VerbExtension):
                            "record_memory_state": True,
                            "record_io_stats": True,
                            "record_stat": True,
-                           "record_file": os.path.join(output_dir, f'{event.action.node_name}_{pid}.mcap'),
+                           "record_file": f'{output_dir}{event.action.node_name}_{pid}.mcap',
                            "pid": pid
                         }])
-
 
         if 'topnode' in config and 'nodes' in config['topnode']:
                 nodes = config['topnode']['nodes']
