@@ -60,7 +60,7 @@ BT2_CONV_FUNC = {
     'queue_depth': int,
     'symbol': str,
     'state_machine': int,
-    'gid': lambda x: map(int, x)
+    'gid': lambda x: list(map(int, x))
 }
 
 LTTNG_IGNORE_NAMES = [

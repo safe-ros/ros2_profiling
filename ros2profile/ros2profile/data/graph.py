@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Optional
 
 from .callback import Callback
 from .context import Context
@@ -12,67 +12,224 @@ from .utils import filter_topics
 
 
 class Graph:
-    def __init__(self):
-        self._contexts = {}
-        self._nodes = {}
-        self._callbacks = {}
-        self._publishers = {}
-        self._subscriptions = {}
-        self._topics = {}
-        self._timers = {}
+    '''
+    Represents the ROS 2 computational graph.
+    '''
+    def __init__(self) -> None:
+        self._contexts: Dict[int, Context] = {}
+        self._nodes: Dict[int, Node] = {}
+        self._callbacks: Dict[int, Callback] = {}
+        self._publishers: Dict[int, Publisher] = {}
+        self._subscriptions: Dict[int, Subscription] = {}
+        self._topics: Dict[str, Topic] = {}
+        self._timers: Dict[int, Timer] = {}
 
-    def add_context(self, context: Context):
-        self._contexts[context._handle] = context
+    def add_context(self, context: Context) -> None:
+        '''
+        Add a context (process) to the graph
+        '''
+        self._contexts[context.handle] = context
 
     def contexts(self) -> List[Context]:
+        '''
+        Get a list of the contexts (processes) in the graph
+        '''
         return list(self._contexts.values())
 
-    def add_node(self, node: Node):
-        self._nodes[node._handle] = node
+    def add_node(self, node: Node) -> None:
+        '''
+        Add a node to the graph
+        '''
+        self._nodes[node.handle] = node
 
-    def nodes(self, node_name=None) -> List[Node]:
-        if node_name:
-            ret = []
-            for node in self._nodes.values():
-                if node.name().find(node_name) >= 0:
-                    ret.append(node)
-            return ret
-        else:
-            return list(self._nodes.values())
+    @property
+    def nodes(self) -> List[Node]:
+        '''
+        Get a list of all nodes in the graph
+        '''
+        return list(self._nodes.values())
 
-    def add_callback(self, callback: Callback) -> None:
-        self._callbacks[callback._handle] = callback
+    def node_by_handle(self, handle: int) -> Optional[Node]:
+        '''
+        Get a node from the graph by handle
+        '''
+        if handle in self._nodes:
+            return self._nodes[handle]
+        return None
+
+    def node_by_name(self, name: str) -> Optional[Node]:
+        '''
+        Get a node from the graph by name
+        '''
+        for node in self._nodes.values():
+            if node.name.find(name) >= 0:
+                return node
+        return None
 
     def add_publisher(self, publisher: Publisher) -> None:
-        self._publishers[publisher.handle()] = publisher
+        '''
+        Add a publisher to the graph
+        '''
+        self._publishers[publisher.handle] = publisher
+        node = self.node_by_handle(publisher.node_handle)
+        if node:
+            publisher.node = node
+            node.add_publisher(publisher)
 
-        topic = publisher.topic_name()
+        topic = publisher.name
         if topic not in self._topics:
             self._topics[topic] = Topic(topic)
         self._topics[topic].add_publisher(publisher)
-        self._nodes[publisher._node_handle]._publishers.append(publisher)
 
-    def publishers(self, rosout=False, parameter_events=False) -> List[Publisher]:
-        return filter_topics(self._publishers.values(), rosout, parameter_events)
+    @property
+    def publishers(self) -> List[Publisher]:
+        '''
+        Get a list of all publishers in the graph
+        '''
+        return list(self._publishers.values())
 
-    def add_subscription(self, subscription: Subscription):
-        self._subscriptions[subscription.handle()] = subscription
-        topic = subscription.topic_name()
+    def publisher_by_handle(self, handle: int) -> Optional[Publisher]:
+        '''
+        Get a publisher using it's handle
+        '''
+        if handle in self._publishers:
+            return self._publishers[handle]
+        return None
+
+    def publisher_by_rmw_handle(self, rmw_handle: int) -> Optional[Publisher]:
+        '''
+        Get a publisher using it's rmw handle
+        '''
+        for publisher in self._publishers.values():
+            if rmw_handle == publisher.rmw_handle:
+                return publisher
+        return None
+
+    def publisher_by_gid(self, gid: List[int]) -> Optional[Publisher]:
+        '''
+        Get a publisher using it's DDS GUID
+        '''
+        for publisher in self._publishers.values():
+            if gid == publisher.gid:
+                return publisher
+        return None
+
+    def publisher_by_topic(self, topic_name: str) -> Optional[Publisher]:
+        '''
+        Get a publisher using it's topic name
+        '''
+        for publisher in self._publishers.values():
+            if publisher.name.find(topic_name) >= 0:
+                return publisher
+        return None
+
+    def add_callback(self, callback: Callback) -> None:
+        '''
+        Add a callback to the ROS graph
+        '''
+        self._callbacks[callback.handle] = callback
+
+    @property
+    def callbacks(self) -> List[Callback]:
+        '''
+        Retrieve a list of all callbacks in the ROS graph
+        '''
+        return list(self._callbacks.values())
+
+    def callback_by_handle(self, handle: int) -> Optional[Callback]:
+        '''
+        Retrieve a callback by it's associated handle
+        '''
+        if handle in self._callbacks:
+            return self._callbacks[handle]
+        return None
+
+    def add_subscription(self, subscription: Subscription) -> None:
+        '''
+        Add a subscription to the graph
+        '''
+        self._subscriptions[subscription.handle] = subscription
+        node = self.node_by_handle(subscription.node_handle)
+        if node:
+            subscription.node = node
+            node.add_subscription(subscription)
+
+        topic = subscription.name
         if topic not in self._topics:
             self._topics[topic] = Topic(topic)
         self._topics[topic].add_subscription(subscription)
-        self._nodes[subscription._node_handle]._subscriptions.append(subscription)
 
-    def subscriptions(self, rosout=False, parameter_events=False) -> List[Subscription]:
-        return filter_topics(self._subscriptions.values(), rosout, parameter_events)
+    @property
+    def subscriptions(self) -> List[Subscription]:
+        '''
+        Get a list of all subscriptions in the graph
+        '''
+        return list(self._subscriptions.values())
 
-    def topics(self, rosout=False, parameter_events=False) -> List[Topic]:
-        return filter_topics(self._topics.values(), rosout, parameter_events)
+    def subscription_by_handle(self, handle: int) -> Optional[Subscription]:
+        '''
+        Get a subscription using it's handle
+        '''
+        if handle in self._subscriptions:
+            return self._subscriptions[handle]
+        return None
+
+    def subscription_by_reference(self, reference: int) -> Optional[Subscription]:
+        '''
+        Get a subscription using it's callback reference
+        '''
+        for subscription in self._subscriptions.values():
+            if subscription.reference == reference:
+                return subscription
+        return None
+
+    def subscription_by_rmw_handle(self, handle: int) -> Optional[Subscription]:
+        '''
+        Get a subscription using it's handle
+        '''
+        for subscription in self._subscriptions.values():
+            if subscription.rmw_handle == handle:
+                return subscription
+        return None
+
+    def subscription_by_gid(self, gid: List[int]) -> Optional[Subscription]:
+        '''
+        Get a subscription using it's DDS GUID
+        '''
+        for subscription in self._subscriptions.values():
+            if subscription.gid == gid:
+                return subscription
+        return None
 
     def add_timer(self, timer: Timer) -> None:
-        self._timers[timer.handle()] = timer
-        if timer._node_handle in self._nodes:
-            self._nodes[timer._node_handle]._timers.append(timer)
+        '''
+        Add a timer to the graph
+        '''
+        self._timers[timer.handle] = timer
+        node = self.node_by_handle(timer.node_handle)
+        if node:
+            timer.node = node
+            node.timers.append(timer)
 
     def timers(self) -> List[Timer]:
+        '''
+        Get all timers in the graph
+        '''
         return list(self._timers.values())
+
+    def timer_by_handle(self, handle: int) -> Optional[Timer]:
+        '''
+        Get a timer using it's handle
+        '''
+        if handle in self._timers:
+            return self._timers[handle]
+        return None
+
+    @property
+    def topics(self) -> List[Topic]:
+        return list(self._topics.values())
+
+    def topic_by_name(self, topic_name: str) -> Optional[Topic]:
+        for topic in self._topics.values():
+            if topic.topic_name().find(topic_name) >= 0:
+                return topic
