@@ -15,12 +15,15 @@ class Topic:
     def add_subscription(self, subscription: Subscription) -> None:
         self._subscriptions.append(subscription)
 
-    def topic_name(self) -> str:
+    @property
+    def name(self) -> str:
         return self._topic_name
 
+    @property
     def publishers(self) -> List[Publisher]:
         return self._publishers
 
+    @property
     def subscriptions(self) -> List[Subscription]:
         return self._subscriptions
 

@@ -2,6 +2,7 @@ import pytest
 
 from ros2profile.api.process import load_mcap_data, load_event_graph
 
+
 def pytest_addoption(parser):
     parser.addoption("--input-dir", action="store")
 
@@ -26,4 +27,3 @@ def profile_event_graph(request):
     if input_dir is None:
         pytest.skip()
     return load_event_graph(input_dir)
-

@@ -1,3 +1,10 @@
+from typing import Dict, Any, List, Optional
+
+from collections import defaultdict
+
+import logging
+import os
+
 from .callback import Callback, CallbackEvent
 from .context import Context
 from .node import Node
@@ -5,16 +12,11 @@ from .graph import Graph
 from .publisher import Publisher, PublishEvent
 from .subscription import Subscription, SubscriptionEvent
 from .timer import Timer
-
-from typing import List, Dict, Any
-
-import logging
-import os
-import pandas as pd
-import numpy as np
+from .topic import Topic
+from . import constants
 
 logging.basicConfig()
-logger = logging.getLogger('ros2profile')
+logger = logging.getLogger("ros2profile")
 
 try:
     import coloredlogs
@@ -22,608 +24,542 @@ except ImportError:
     pass
 else:
     log_format = os.environ.get(
-            'COLOREDLOGS_LOG_FORMAT', '%(name)s %(levelname)s %(message)s')
+        "COLOREDLOGS_LOG_FORMAT", "%(name)s %(levelname)s %(message)s"
+    )
     coloredlogs.install(level=1, logger=logger, fmt=log_format)
 
 
+RawEvent = Dict[str, Any]
+RawEvents = List[RawEvent]
+RawEventCollection = Dict[str, RawEvents]
+
+
 def build_graph(
-        event_data: Dict[str, Any],
-        callback_events: bool = True,
-        publish_events: bool = True,
-        subscription_events: bool = True,
-        ) -> Graph:
+    event_data: RawEventCollection,
+    process_timer_events: bool = True,
+    process_callback_events: bool = True,
+    process_publish_events: bool = True,
+    process_subscription_events: bool = True,
+) -> Graph:
     ret = Graph()
 
-    _build_contexts(ret, event_data)
-    _build_nodes(ret, event_data)
-    _build_callbacks(ret, event_data)
-    _build_publishers(ret, event_data)
-    _build_subscriptions(ret, event_data)
-    _build_timers(ret, event_data)
+    context_events = event_data[constants.RCL_INIT]
+    _build_contexts(ret, context_events)
 
-    if callback_events:
-        _build_callback_events(ret, event_data)
-    if publish_events:
-        _build_publish_events(ret, event_data)
-    if subscription_events:
-        _build_subscription_events(ret, event_data)
-    if callback_events and subscription_events:
-        _associate_subscription_callbacks(ret, event_data)
-    if publish_events and callback_events:
-        _associate_pubsub(ret)
+    node_events = event_data[constants.RCL_NODE_INIT]
+    _build_nodes(ret, node_events)
 
-    _associate_subscriptions_to_publishers(ret)
-    _associate_timers_to_publishers(ret)
+    callback_events = event_data[constants.RCLCPP_CALLBACK_REGISTER]
+    _build_callbacks(ret, callback_events)
+
+    rcl_publisher_events = event_data[constants.RCL_PUBLISHER_INIT]
+    rmw_publisher_events = event_data[constants.RMW_PUBLISHER_INIT]
+    dds_writer_events = event_data[constants.DDS_CREATE_WRITER]
+    _build_publishers(
+        ret, rcl_publisher_events, rmw_publisher_events, dds_writer_events
+    )
+
+    rclcpp_events = event_data[constants.RCLCPP_SUBSCRIPTION_INIT]
+    rclcpp_cb_events = event_data[constants.RCLCPP_SUBSCRIPTION_CALLBACK_ADDED]
+    rcl_events = event_data[constants.RCL_SUBSCRIPTION_INIT]
+    rmw_events = event_data[constants.RMW_SUBSCRIPTION_INIT]
+    dds_events = event_data[constants.DDS_CREATE_READER]
+    _build_subscriptions(
+        ret, rclcpp_events, rclcpp_cb_events, rcl_events, rmw_events, dds_events
+    )
+
+    timer_init_events = event_data[constants.RCL_TIMER_INIT]
+    timer_link_node_events = event_data[constants.RCLCPP_TIMER_LINK_NODE]
+    timer_link_callback_events = event_data[constants.RCLCPP_TIMER_CALLBACK_ADDED]
+    _build_timers(
+        ret, timer_init_events, timer_link_node_events, timer_link_callback_events
+    )
+
+    if process_callback_events:
+        callback_start_events = event_data[constants.ROS_CALLBACK_START]
+        callback_end_events = event_data[constants.ROS_CALLBACK_END]
+        _build_callback_events(ret, callback_start_events, callback_end_events)
+
+    if process_publish_events:
+        rclcpp_publish_events = event_data[constants.RCLCPP_PUBLISH]
+        rcl_publish_events = event_data[constants.RCL_PUBLISH]
+        rmw_publish_events = event_data[constants.RMW_PUBLISH]
+        dds_write_events = event_data[constants.DDS_WRITE]
+        _build_publish_events(
+            ret,
+            rclcpp_publish_events,
+            rcl_publish_events,
+            rmw_publish_events,
+            dds_write_events,
+        )
+
+    if process_subscription_events:
+        rclcpp_take_events = event_data[constants.RCLCPP_TAKE]
+        rcl_take_events = event_data[constants.RCL_TAKE]
+        rmw_take_events = event_data[constants.RMW_TAKE]
+        dds_read_events = event_data[constants.DDS_READ]
+        _build_subscription_events(
+            ret, rclcpp_take_events, rcl_take_events, rmw_take_events, dds_read_events
+        )
+
+    if process_callback_events and process_timer_events:
+        _associate_timer_callbacks(ret)
+
+    if process_callback_events and process_subscription_events:
+        _associate_subscription_callbacks(ret)
+
+    if process_publish_events and process_callback_events:
+        _associate_subscription_event_to_publish_event(ret)
+
+    if process_publish_events and process_callback_events and process_timer_events:
+        _associate_publish_events_to_timer_callbacks(ret)
+
+    if (
+        process_publish_events
+        and process_callback_events
+        and process_subscription_events
+    ):
+        _associate_publish_events_to_subscription_callbacks(ret)
     return ret
 
-def _build_contexts(graph: Graph, event_data) -> None:
-    context_events = event_data['ros2:rcl_init']
-    logger.debug(f'Building contexts from {len(context_events)} events')
+
+def _build_contexts(graph: Graph, context_events: RawEvents) -> None:
+    """
+    Analyze event data for context initialization events
+    """
+    logger.debug(f"Building contexts from {len(context_events)} events")
     for event in context_events:
-        graph.add_context(Context(event['context_handle'], event['version']))
-    logger.info(f'Detected {len(graph._contexts)} contexts')
+        graph.add_context(Context(event["context_handle"], event["version"]))
+    logger.info(f"Detected {len(graph.contexts())} contexts")
 
 
-def _build_nodes(graph: Graph, event_data) -> None:
-    node_events = event_data['ros2:rcl_node_init']
-    logger.debug(f'Building nodes from {len(node_events)} events')
-    for event in node_events:
-        node = Node(event['node_handle'], str(event['node_name']),
-            str(event['namespace']), event['rmw_handle'])
+def _build_nodes(graph: Graph, node_init_events: RawEvents) -> None:
+    """
+    Analyze event data for node initialization events
+    """
+    logger.debug(f"Building nodes from {len(node_init_events)} events")
+    for event in node_init_events:
+        node = Node(
+            event["node_handle"],
+            str(event["node_name"]),
+            str(event["namespace"]),
+            event["rmw_handle"],
+        )
         graph.add_node(node)
-    logger.info(f'Detected {len(graph._nodes)} nodes')
+    logger.info(f"Detected {len(graph.nodes)} nodes")
 
 
-def _build_callbacks(graph: Graph, event_data) -> None:
-    callback_events = event_data['ros2:rclcpp_callback_register']
-    logger.debug(f'Building callbacks from {len(callback_events)} register events')
-
+def _build_callbacks(graph: Graph, callback_events: RawEvents) -> None:
+    logger.debug(f"Building callbacks from {len(callback_events)} register events")
     for event in callback_events:
-        callback = Callback(event['callback'], str(event['symbol']))
-        callback._rclcpp_init_time = event['_timestamp']
+        callback = Callback(
+            event["callback"], str(event["symbol"]), int(event["_timestamp"])
+        )
         graph.add_callback(callback)
-    logger.info(f'Detected {len(graph._callbacks)} callbacks')
+    logger.info(f"Detected {len(graph.callbacks)} callbacks")
 
 
-def _build_publishers(graph: Graph, event_data) -> None:
-    rcl_events = event_data['ros2:rcl_publisher_init']
-    rmw_events = event_data['ros2:rmw_publisher_init']
-    dds_events = event_data['dds:create_writer']
-
-    ss = f'''Building publishers
+def _build_publishers(
+    graph: Graph, rcl_events: RawEvents, rmw_events: RawEvents, dds_events: RawEvents
+) -> None:
+    debug_str = f"""Building publishers
     rcl events: {len(rcl_events)}
     rmw events: {len(rmw_events)}
-    dds events: {len(dds_events)}'''
-    logger.debug(ss)
+    dds events: {len(dds_events)}"""
+    logger.debug(debug_str)
 
     for event in rcl_events:
-        pub = Publisher(event['publisher_handle'])
-        pub._rmw_handle = event['rmw_publisher_handle']
-        pub._node_handle = event['node_handle']
-        if pub._node_handle in graph._nodes:
-            pub._node = graph._nodes[pub._node_handle]
-        pub._topic_name = str(event['topic_name'])
-        pub._queue_depth = event['queue_depth']
-        pub._rcl_init_time = event['_timestamp']
+        pub = Publisher(
+            publisher_handle=event["publisher_handle"],
+            node_handle=event["node_handle"],
+            rmw_publisher_handle=event["rmw_publisher_handle"],
+            topic_name=event["topic_name"],
+            queue_depth=event["queue_depth"],
+        )
+
+        pub.add_stamp("rcl_init_time", event["_timestamp"])
+
+        if pub.handle in graph.nodes:
+            node = graph.node_by_handle(pub.node_handle)
+            if node:
+                pub.node = node
         graph.add_publisher(pub)
 
-    for event in event_data['ros2:rmw_publisher_init']:
-        pub = None
-        for p in graph._publishers.values():
-            if p._rmw_handle == event['rmw_publisher_handle']:
-                pub = p
-                break
-        if pub is None:
-            # print("Could not associate rmw publisher with rcl publisher")
+    for event in rmw_events:
+        found_pub = graph.publisher_by_rmw_handle(event["rmw_publisher_handle"])
+        if found_pub is None:
+            # logging.debug("Could not associate rmw publisher with publisher", event)
             continue
-        pub._rmw_init_time = event['_timestamp']
-        pub._gid = [*event['gid']][0:16]
+        found_pub.add_stamp("rmw_init_time", event["_timestamp"])
+        found_pub.gid = [*event["gid"]][0:16]
 
-    for event in event_data['dds:create_writer']:
-        pub = None
-        for p in graph._publishers.values():
-            if p._gid == event['gid']:
-                pub = p
-                break
-        if pub is None:
-            # print(f"Could not associate dds writer: {event['topic_name']}")
+    for event in dds_events:
+        found_pub = graph.publisher_by_gid(event["gid"])
+        if found_pub is None:
+            # logging.debug(
+            #    "Could not associate dds writer publisher with publisher", event
+            # )
             continue
 
-        pub._dds_init_time = event['_timestamp']
-        pub._dds_topic_name = event['topic_name']
-        pub._dds_writer = event['writer']
-    logger.info(f'Detected {len(graph._publishers)} publishers')
+        found_pub.add_stamp("dds_init_time", event["_timestamp"])
+        found_pub.dds_topic_name = event["topic_name"]
+        found_pub.dds_writer = event["writer"]
+    logger.info(f"Detected {len(graph.publishers)} publishers")
 
 
-def _build_subscriptions(graph: Graph, event_data) -> None:
-    rclcpp_events = event_data['ros2:rclcpp_subscription_init']
-    rclcpp_cb_events = event_data['ros2:rclcpp_subscription_callback_added']
-    rcl_events = event_data['ros2:rcl_subscription_init']
-    rmw_events = event_data['ros2:rmw_subscription_init']
-    dds_events = event_data['dds:create_reader']
-
-    ss = f'''Building subscriptions
+def _build_subscriptions(
+    graph: Graph,
+    rclcpp_events: RawEvents,
+    rclcpp_cb_events: RawEvents,
+    rcl_events: RawEvents,
+    rmw_events: RawEvents,
+    dds_events: RawEvents,
+) -> None:
+    ss = f"""Building subscriptions
     rclcpp events: {len(rclcpp_events)}
     rclcpp callback events: {len(rclcpp_cb_events)}
     rcl events: {len(rcl_events)}
     rmw events: {len(rmw_events)}
-    dds events: {len(dds_events)}'''
+    dds events: {len(dds_events)}"""
     logger.debug(ss)
 
-    temp_subs = []
-    for event in rclcpp_events:
-        sub = Subscription(event['subscription_handle'], event['subscription'])
-        sub._rclcpp_init_time = event['_timestamp']
-        temp_subs.append(sub)
-
     for event in rcl_events:
-        sub = None
-        for s in temp_subs:
-            if s._handle == event['subscription_handle']:
-                sub = s
-                break
-        if sub is None:
-            # print("Could not associate rcl subscription")
-            continue
-
-        sub._rmw_handle = event['rmw_subscription_handle']
-        sub._rcl_init_time = event['_timestamp']
-        sub._node_handle = event['node_handle']
-        if sub._node_handle in graph._nodes:
-            sub._node = graph._nodes[sub._node_handle]
-        sub._topic_name = str(event['topic_name'])
-        sub._queue_depth = event['queue_depth']
-
-    for event in rclcpp_cb_events:
-        sub = None
-        for s in temp_subs:
-            if s._reference == event['subscription']:
-                sub = s
-                break
-        if sub is None:
-            # print("Could not associate subscription callback")
-            continue
-        sub._callback_handle = event['callback']
-        if sub._callback_handle in graph._callbacks:
-            sub._callback = graph._callbacks[sub._callback_handle]
-
-
-    for event in rmw_events:
-        sub = None
-        for s in temp_subs:
-            if s._rmw_handle == event['rmw_subscription_handle']:
-                sub = s
-                break
-        if sub is None:
-            # print("Could not associate rmw subscription")
-            continue
-
-        sub._rmw_init_time = event['_timestamp']
-        sub._gid = [*event['gid']][0:16]
-
-    for event in dds_events:
-        sub = None
-        for s in temp_subs:
-            if s._gid == event['gid']:
-                sub = s
-                break
-        if not sub:
-            # print(f"Could not associate dds reader: {event['topic_name']}")
-            continue
-
-        sub._dds_init_time = event['_timestamp']
-        sub._dds_topic_name = event['topic_name']
-        sub._dds_reader = event['reader']
-
-    for sub in temp_subs:
+        sub = Subscription(
+            subscription_handle=event["subscription_handle"],
+            node_handle=event["node_handle"],
+            rmw_subscription_handle=event["rmw_subscription_handle"],
+            topic_name=event["topic_name"],
+            queue_depth=event["queue_depth"],
+        )
+        sub.add_stamp("rcl_init_time", event["_timestamp"])
         graph.add_subscription(sub)
 
-    logger.info(f'Detected {len(graph._subscriptions)} subscriptions')
+    for event in rclcpp_events:
+        found_sub = graph.subscription_by_handle(event["subscription_handle"])
+        if found_sub is None:
+            # logging.debug(
+            #    "Could not associate rclcpp subscription with subscription", event
+            # )
+            continue
+        found_sub.add_stamp("rclcpp_init_time", event["_timestamp"])
+        found_sub.reference = event["subscription"]
 
+    for event in rclcpp_cb_events:
+        found_sub = graph.subscription_by_reference(event["subscription"])
+        if found_sub is None:
+            # logging.debug(
+            #    "Could not associate rclcpp callback with subscription", event
+            # )
+            continue
+        found_sub.callback_handle = event["callback"]
+        found_callback = graph.callback_by_handle(event["callback"])
+        if found_callback:
+            found_sub.callback = found_callback
 
-def _build_timers(graph: Graph, event_data) -> None:
-    temp_timers = []
-    for event in event_data['ros2:rcl_timer_init']:
-        t = Timer(event['timer_handle'])
-        t._period = event['period']
-        t._rcl_init_time = event['_timestamp']
-        temp_timers.append(t)
-
-    for event in event_data['ros2:rclcpp_timer_link_node']:
-        timer = None
-        for t in temp_timers:
-            if t._handle == event['timer_handle']:
-                timer = t
-        if timer is None:
+    for event in rmw_events:
+        found_sub = graph.subscription_by_rmw_handle(event["rmw_subscription_handle"])
+        if found_sub is None:
+            # logging.debug(
+            #    "Could not associate rmw subscription with subscription", event
+            # )
             continue
 
-        timer._rclcpp_init_time = event['_timestamp']
-        timer._node_handle = event['node_handle']
-        if timer._node_handle in graph._nodes:
-            timer._node = graph._nodes[timer._node_handle]
+        found_sub.add_stamp("rmw_init_time", event["_timestamp"])
+        found_sub.gid = [*event["gid"]][0:16]
 
-    for event in event_data['ros2:rclcpp_timer_callback_added']:
-        timer = None
-        for t in temp_timers:
-            if t._handle == event['timer_handle']:
-                timer = t
-        if timer is None:
+    for event in dds_events:
+        found_sub = graph.subscription_by_gid(event["gid"])
+        if not found_sub:
+            # logging.debug("Could not associate dds reader with subscription", event)
             continue
 
-        timer._callback_handle = event['callback']
+        found_sub.add_stamp("dds_init_time", event["_timestamp"])
+        found_sub.dds_topic_name = event["topic_name"]
+        found_sub.dds_reader_handle = event["reader"]
 
-        if timer._callback_handle in graph._callbacks:
-            timer._callback = graph._callbacks[timer._callback_handle]
-            graph._callbacks[timer._callback_handle]._source = timer
+    logger.info(f"Detected {len(graph.subscriptions)} subscriptions")
 
-    for timer in temp_timers:
+
+def _build_timers(
+    graph: Graph,
+    timer_init_events: RawEvents,
+    rclcpp_timer_link_events: RawEvents,
+    rclcpp_timer_callback_added_events: RawEvents,
+) -> None:
+    for event in rclcpp_timer_link_events:
+        timer = Timer(event["timer_handle"], event["node_handle"])
+        timer.add_stamp("rclcpp_init_time", event["_timestamp"])
         graph.add_timer(timer)
 
-def _build_callback_events(graph: Graph, event_data) -> None:
-    events = []
-    for event in event_data['ros2:callback_start']:
-        events.append({
-            'event': 's',
-            'is_intra_process': event['is_intra_process'],
-            'timestamp': event['_timestamp'],
-            'callback': event['callback'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']})
-    for event in event_data['ros2:callback_end']:
-        events.append({
-            'event': 'e',
-            'timestamp': event['_timestamp'],
-            'callback': event['callback'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']})
+    for event in timer_init_events:
+        found_timer = graph.timer_by_handle(event["timer_handle"])
+        if not found_timer:
+            continue
+        found_timer.period = event["period"]
+        found_timer.add_stamp("rcl_init_time", event["_timestamp"])
 
-    df = pd.DataFrame(events)
-    df.sort_values(by=['callback','vpid', 'vtid', 'timestamp'], inplace=True)
-    df.reset_index(drop=True, inplace=True)
+    for event in rclcpp_timer_callback_added_events:
+        found_timer = graph.timer_by_handle(event["timer_handle"])
+        if not found_timer:
+            continue
 
-    cur_event = None
-    events = []
-    for idx, row in df.iterrows():
-        if row['event'] == 's':
-            cur_event = CallbackEvent(row['callback'], row['is_intra_process'])
-            cur_event._callback_start = row['timestamp']
-            cur_event._vpid = row['vpid']
-            cur_event._vtid = row['vtid']
-            cur_event._cpu_id = row['cpu_id']
-        elif cur_event and row['event'] == 'e':
-            if (row['callback'] != cur_event._callback_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                print('error associating: ', idx)
-                cur_event=None
-                break
+        found_timer.callback_handle = event["callback"]
+        found_callback = graph.callback_by_handle(found_timer.callback_handle)
+        if found_callback:
+            found_timer.callback = found_callback
+            found_callback._source = found_timer
+
+
+def _build_callback_events(
+    graph: Graph, callback_start_events: RawEvents, callback_end_events: RawEvents
+) -> None:
+    events_by_callback = defaultdict(list)
+
+    for event in callback_start_events:
+        events_by_callback[event["callback"]].append(event)
+    for event in callback_end_events:
+        events_by_callback[event["callback"]].append(event)
+    callback_events: List[CallbackEvent] = []
+
+    for event_stream in events_by_callback.values():
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]))
+        cur_event = None
+        for entry in event_stream:
+            if not cur_event:
+                if entry["_name"] == constants.ROS_CALLBACK_START:
+                    cur_event = CallbackEvent(
+                        entry["callback"], entry["is_intra_process"]
+                    )
+                    cur_event._callback_start = entry["_timestamp"]
             else:
-                cur_event._callback_end = row['timestamp']
-                events.append(cur_event)
-                cur_event = None
+                if entry["_name"] == constants.ROS_CALLBACK_END:
+                    cur_event._callback_end = entry["_timestamp"]
+                    callback_events.append(cur_event)
+                    cur_event = None
 
-    for event in events:
-        if event.handle() in graph._callbacks:
-            graph._callbacks[event.handle()]._events.append(event)
-            if graph._callbacks[event.handle()]._source is not None:
-                event._source = graph._callbacks[event.handle()]._source
-        else:
-            # print("Could not associate CallbackEvent with Callback")
-            pass
+    for callback_event in callback_events:
+        found_callback = graph.callback_by_handle(callback_event.callback_handle)
+        if found_callback:
+            found_callback.events().append(callback_event)
+            callback_event._source = found_callback
 
     for callback in graph._callbacks.values():
         callback._events.sort(key=lambda ev: ev._callback_start)
 
-def _build_publish_events(graph: Graph, event_data):
-    events = []
 
-    for event in event_data['ros2:rclcpp_publish']:
-        events.append({
-            'event': 'rclcpp_publish',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
+def _build_publish_events(
+    graph: Graph,
+    rclcpp_publish_events: RawEvents,
+    rcl_publish_events: RawEvents,
+    rmw_publish_events: RawEvents,
+    dds_write_events: RawEvents,
+):
+    events_by_message = defaultdict(list)
+    for event in rclcpp_publish_events:
+        events_by_message[event["message"]].append(event)
+    for event in rcl_publish_events:
+        events_by_message[event["message"]].append(event)
+    for event in rmw_publish_events:
+        events_by_message[event["message"]].append(event)
+    for event in dds_write_events:
+        events_by_message[event["data"]].append(event)
 
-    for event in event_data['ros2:rcl_publish']:
-        events.append({
-            'event': 'rcl_publish',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'publisher_handle': event['publisher_handle'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
+    publish_events: List[PublishEvent] = []
 
-    for event in event_data['ros2:rmw_publish']:
-        events.append({
-            'event': 'rmw_publish',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
+    for event_stream in events_by_message.values():
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]))
+        cur_event = None
+        for entry in event_stream:
+            if not cur_event:
+                if entry["_name"] == constants.RCLCPP_PUBLISH:
+                    cur_event = PublishEvent(entry["message"])
+                    cur_event.add_stamp(constants.RCLCPP_PUBLISH, entry["_timestamp"])
+            else:
+                if entry["_name"] == constants.RCL_PUBLISH:
+                    cur_event.add_stamp(constants.RCL_PUBLISH, entry["_timestamp"])
+                    cur_event.publisher_handle = entry["publisher_handle"]
+                elif entry["_name"] == constants.RMW_PUBLISH:
+                    cur_event.add_stamp(constants.RMW_PUBLISH, entry["_timestamp"])
+                elif entry["_name"] == constants.DDS_WRITE:
+                    cur_event.add_stamp(constants.DDS_WRITE, entry["_timestamp"])
+                    cur_event.add_stamp("timestamp", entry["timestamp"])
+                    cur_event.dds_writer = entry["writer"]
+                    publish_events.append(cur_event)
+                    cur_event = None
 
-    for event in event_data['dds:write']:
-        events.append({
-            'event': 'dds_write',
-            'timestamp': event['_timestamp'],
-            'writer': event['writer'],
-            'message': event['data'],
-            'dds_timestamp': event['timestamp'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
+    logger.info("Found %i publish events", len(publish_events))
 
-    df = pd.DataFrame(events)
-    df.sort_values(by=['message', 'vpid', 'vtid', 'timestamp'], inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    df['used'] = False
-    used_idx = df.columns.get_loc('used')
+    for pub_event in publish_events:
+        found_publisher = graph.publisher_by_handle(pub_event.publisher_handle)
+        if found_publisher:
+            pub_event.source = found_publisher
+            found_publisher.events.append(pub_event)
 
-    cur_event = None
-    publish_events = []
-    for idx, row in df.iterrows():
-        if row['event'] == 'rclcpp_publish':
-            cur_event = PublishEvent(row['message'])
-            cur_event._vpid = row['vpid']
-            cur_event._vtid = row['vtid']
-            cur_event._cpu_id = row['cpu_id']
-            cur_event._rclcpp_init_time = row['timestamp']
-            df.iloc[idx, used_idx] = True
-        elif cur_event and row['event'] == 'rcl_publish':
-            if (row['message'] != cur_event._message_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                continue
-            cur_event._rcl_init_time = row['timestamp']
-            cur_event._publisher_handle = row['publisher_handle']
-            df.iloc[idx, used_idx] = True
-        elif cur_event and row['event'] == 'rmw_publish':
-            if (row['message'] != cur_event._message_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                continue
-            cur_event._rmw_init_time = row['timestamp']
-            df.iloc[idx, used_idx] = True
-        elif cur_event and row['event'] == 'dds_write':
-            if (row['message'] != cur_event._message_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                continue
-            cur_event._dds_init_time = row['timestamp']
-            cur_event._dds_writer = row['writer']
-            cur_event._dds_timestamp = row['dds_timestamp']
+    for publisher in graph.publishers:
+        publisher.events.sort(key=lambda ev: ev.timestamp())
 
-            df.iloc[idx, used_idx] = True
-            publish_events.append(cur_event)
-            cur_event = None
 
-    rclcpp_events_found = len(publish_events)
+def _build_subscription_events(
+    graph: Graph,
+    rclcpp_take_events: RawEvents,
+    rcl_take_events: RawEvents,
+    rmw_take_events: RawEvents,
+    dds_read_events: RawEvents,
+):
+    events = defaultdict(list)
 
-    df2 = df[~df['used']].copy()
-    df2.reset_index(drop=True, inplace=True)
+    for event in rclcpp_take_events:
+        events[event["message"]].append(event)
+    for event in rcl_take_events:
+        events[event["message"]].append(event)
+    for event in rmw_take_events:
+        events[event["message"]].append(event)
+    for event in dds_read_events:
+        events[event["buffer"]].append(event)
 
-    cur_event = None
-    for idx, row in df2.iterrows():
-        if row['event'] == 'rcl_publish':
-            cur_event = PublishEvent(row['message'])
-            cur_event._vpid = row['vpid']
-            cur_event._vtid = row['vtid']
-            cur_event._cpu_id = row['cpu_id']
-            cur_event._rcl_init_time = row['timestamp']
-            cur_event._publisher_handle = row['publisher_handle']
-            df2.iloc[idx, used_idx] = True
-        elif cur_event and row['event'] == 'rmw_publish':
-            if (row['message'] != cur_event._message_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                continue
-            cur_event._rmw_init_time = row['timestamp']
-            df2.iloc[idx, used_idx] = True
+    read_events: List[SubscriptionEvent] = []
 
-        elif cur_event and row['event'] == 'dds_write':
-            if (row['message'] != cur_event._message_handle or
-                row['vpid'] != cur_event._vpid or
-                row['vtid'] != cur_event._vtid):
-                continue
-            cur_event._dds_init_time = row['timestamp']
-            cur_event._dds_writer = row['writer']
-            df2.iloc[idx, used_idx] = True
-            publish_events.append(cur_event)
-            cur_event = None
-    rcl_events_found = len(publish_events) - rclcpp_events_found
+    for event_stream in events.values():
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]), reverse=True)
+        cur_event = None
+        for entry in event_stream:
+            if entry["_name"] == constants.RCLCPP_TAKE:
+                cur_event = SubscriptionEvent(entry["message"])
+                cur_event.add_stamp(constants.RCLCPP_TAKE, entry["_timestamp"])
+            if cur_event:
+                if entry["_name"] == constants.RCL_TAKE:
+                    cur_event.add_stamp(constants.RCL_TAKE, entry["_timestamp"])
+                elif entry["_name"] == constants.RMW_TAKE:
+                    cur_event.add_stamp(constants.RMW_TAKE, entry["_timestamp"])
+                    cur_event.rmw_subscription_handle = entry["rmw_subscription_handle"]
+                    cur_event.source_timestamp = entry["source_timestamp"]
+                    cur_event.taken = entry["taken"]
+                elif entry["_name"] == constants.DDS_READ:
+                    cur_event.add_stamp(constants.DDS_READ, entry["_timestamp"])
+                    cur_event.dds_reader = entry["reader"]
+                    read_events.append(cur_event)
 
-    for event in publish_events:
-        if event._publisher_handle in graph._publishers:
-            graph._publishers[event._publisher_handle]._events.append(event)
-            event._source = graph._publishers[event._publisher_handle]
-
-    for publisher in graph._publishers.values():
-        publisher._events.sort(key=lambda ev: ev._rcl_init_time)
-
-def _build_subscription_events(graph: Graph, event_data):
-    events = []
-
-    for event in event_data['ros2:rclcpp_take']:
-        events.append({
-            'event': 'rclcpp_take',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
-    for event in event_data['ros2:rcl_take']:
-        events.append({
-            'event': 'rcl_take',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
-    for event in event_data['ros2:rmw_take']:
-        events.append({
-            'event': 'rmw_take',
-            'timestamp': event['_timestamp'],
-            'message': event['message'],
-            'rmw_subscription_handle': event['rmw_subscription_handle'],
-            'source_timestamp': event['source_timestamp'],
-            'taken': event['taken'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
-    for event in event_data['dds:read']:
-        events.append({
-            'event': 'dds_read',
-            'timestamp': event['_timestamp'],
-            'message': event['buffer'],
-            'reader': event['reader'],
-            'vpid': event['vpid'], 'vtid': event['vtid'], 'cpu_id': event['cpu_id']
-        })
-
-    df = pd.DataFrame(events)
-    df.sort_values(by=['vpid', 'vtid', 'timestamp'], inplace=True, ascending=False)
-    df.reset_index(drop=True, inplace=True)
-
-    cur_event = None
-    subscribe_events = []
-    for idx, row in df.iterrows():
-        if row['event'] == 'rclcpp_take':
-            cur_event = SubscriptionEvent(row['message'])
-            cur_event._vpid = row['vpid']
-            cur_event._vtid = row['vtid']
-            cur_event._cpu_id = row['cpu_id']
-            cur_event._rclcpp_init_time = row['timestamp']
-        elif cur_event and row['event'] == 'rcl_take':
-            if (row['message'] != cur_event._message_handle):
-                continue
-            cur_event._rcl_init_time = row['timestamp']
-        elif cur_event and row['event'] == 'rmw_take':
-            if (row['message'] != cur_event._message_handle):
-                continue
-            cur_event._rmw_init_time = row['timestamp']
-            cur_event._rmw_subscription_handle = int(row['rmw_subscription_handle'])
-        elif cur_event and row['event'] == 'dds_read':
-            if (row['message'] != cur_event._message_handle):
-                continue
-            cur_event._dds_init_time = row['timestamp']
-            cur_event._dds_reader = int(row['reader'])
-            subscribe_events.append(cur_event)
-            cur_event = None
+    logger.info("Found %i subscription events", len(read_events))
 
     subs_by_rmw = {}
-    for sub in graph._subscriptions.values():
-        subs_by_rmw[sub._rmw_handle] = sub
+    for sub in graph.subscriptions:
+        subs_by_rmw[sub.rmw_handle] = sub
 
-    for event in subscribe_events:
-        subs_by_rmw[event._rmw_subscription_handle]._events.append(event)
-        event._source = subs_by_rmw[event._rmw_subscription_handle]
+    for read_event in read_events:
+        subs_by_rmw[read_event.rmw_subscription_handle].events.append(read_event)
+        read_event.source = subs_by_rmw[read_event.rmw_subscription_handle]
 
-    for subscription in graph._subscriptions.values():
-        subscription._events.sort(key=lambda ev: ev._rcl_init_time)
+    for subscription in graph.subscriptions:
+        subscription.events.sort(key=lambda ev: ev.timestamp())
 
 
-def _associate_subscription_callbacks(graph: Graph, event_data):
-    for subscription in graph._subscriptions.values():
-        sub_events = subscription.events()
-        sub_cb_events = subscription.callback().events()
-        subscription.callback()._source = subscription
+def _associate_subscription_callbacks(graph: Graph):
+    for subscription in graph.subscriptions:
+        sub_events = subscription.events
+        sub_cb_events = subscription.callback.events()
+        subscription.callback.source = subscription
 
         if len(sub_events) == 0:
-            print(f"No events for subscription: {subscription.topic_name()}")
+            print(f"No events for subscription: {subscription.name}")
             continue
         if len(sub_cb_events) == 0:
-            print(f"No callback events for subscription: {subscription.topic_name()}")
+            print(f"No callback events for subscription: {subscription.name}")
             continue
 
-        if len(sub_events) != len(sub_cb_events):
-            print(f"Mismatch in event numbers for : {subscription.topic_name()}")
-            print(f" Subscription Events: {len(sub_events)}")
-            print(f" Callback Events: {len(sub_cb_events)}")
+        for sub_event, callback_event in zip(sub_events, sub_cb_events):
+            sub_event.callback = callback_event
+            callback_event.trigger = sub_event
+            sub_event.source = subscription
+            callback_event.source = subscription
 
-        for (sub_event, callback_event) in zip(sub_events, sub_cb_events):
-            sub_event._callback = callback_event
-            callback_event._trigger = sub_event
 
-            callback_event._source = subscription
-            sub_event._source = subscription
+def _associate_timer_callbacks(graph: Graph):
+    for timer in graph.timers():
+        timer.callback.source = timer
+        timer_cb_events = timer.callback.events()
 
-def _associate_pubsub(graph: Graph):
-    for topic in graph.topics():
-        events = []
-        if len(topic.subscriptions()) == 0 or len(topic.publishers()) == 0:
+        for timer_cb_event in timer_cb_events:
+            timer_cb_event.source = timer
+            timer_cb_event.trigger = timer
+
+
+def _associate_subscription_event_to_publish_event(graph: Graph):
+    def _associate(publisher: Publisher, subscription: Subscription):
+        pubsub_events = []
+        for event_idx, event in enumerate(subscription.events):
+            pubsub_events.append(
+                {
+                    "type": "subscription",
+                    "event_idx": event_idx,
+                    "timestamp": event.source_timestamp,
+                }
+            )
+        for event_idx, event in enumerate(publisher.events):
+            pubsub_events.append(
+                {
+                    "type": "publication",
+                    "event_idx": event_idx,
+                    "timestamp": event._stamps["timestamp"],
+                }
+            )
+
+        pubsub_events = sorted(pubsub_events, key=lambda x: (x["timestamp"], x["type"]))
+
+        cur_pub: Optional[Dict[str, Any]] = None
+        for event in pubsub_events:
+            if event["type"] == "publication":
+                cur_pub = event
+            elif event["type"] == "subscription":
+                if cur_pub and event["timestamp"] == cur_pub["timestamp"]:
+                    pub_event = publisher.events[cur_pub["event_idx"]]
+                    sub_event = subscription.events[event["event_idx"]]
+                    sub_event.trigger = pub_event
+                else:
+                    cur_pub = None
+
+    for topic in graph.topics:
+        if len(topic.subscriptions) == 0 or len(topic.publishers) == 0:
             continue
-
-        for sub_idx, sub in enumerate(topic.subscriptions()):
-            for event_idx, ev in enumerate(sub.events()):
-                events.append({'type': 'sub',
-                               'topic_num': int(sub_idx),
-                               'event_num': int(event_idx),
-                               'ts': ev._dds_init_time})
-        for pub_idx, pub in enumerate(topic.publishers()):
-            for event_idx, ev in enumerate(pub.events()):
-                events.append({'type': 'pub',
-                               'topic_num': int(pub_idx),
-                               'event_num': int(event_idx),
-                               'ts': ev._dds_init_time})
-        if len(events) == 0:
-            continue
-
-        df = pd.DataFrame(events)
-        df.sort_values(by=['ts'], inplace=True, ascending=False)
-
-        cur_event = None
-        for idx, row in df.iterrows():
-            if row['type'] == 'sub':
-                cur_sub = topic.subscriptions()[row['topic_num']]
-                cur_event = cur_sub.events()[row['event_num']]
-            elif cur_event and row['type'] == 'pub':
-                cur_event._trigger = topic.publishers()[row['topic_num']].events()[row['event_num']]
-                cur_event = None
+        for subscription in topic.subscriptions:
+            for publisher in topic.publishers:
+                if len(subscription.events) == 0 or len(publisher.events) == 0:
+                    continue
+                _associate(publisher, subscription)
 
 
-def _associate_timers_to_publishers(graph: Graph):
-    candidates = []
-    for node in graph.nodes():
-        for timer in node.timers():
-            for publisher in node.publishers():
-                if np.abs(len(timer.callback().events()) - len(publisher.events())) < 5:
-                    candidates.append((timer, publisher))
+def _associate_publish_events_to_timer_callbacks(graph: Graph):
+    def _associate(timer: Timer, publisher: Publisher):
+        if len(timer.callback.events()) != len(publisher.events):
+            return
+        for timer_event in timer.callback.events():
+            for publisher_event in publisher.events:
+                if (
+                    timer_event.start() < publisher_event.timestamp()
+                    and publisher_event.timestamp() < timer_event.end()
+                ):
+                    publisher_event.trigger = timer_event
 
-    logger.debug(f'Found {len(candidates)} candidate publishers in timer callbacks')
+    for node in graph.nodes:
+        for timer in node.timers:
+            for publisher in node.publishers:
+                _associate(timer, publisher)
 
-    for (timer, publisher) in candidates:
-        starts = [cb.start() for cb in timer.callback().events()]
-        ends = [cb.end() for cb in timer.callback().events()]
-        pubs = [p._rclcpp_init_time for p in publisher.events()]
-        max_idx = min(len(starts), len(pubs))
-        starts = starts[0:max_idx]
-        ends = ends[0:max_idx]
-        pubs = pubs[0:max_idx]
 
-        if not (np.all(pubs > starts) and np.all(pubs < ends)):
-            continue
+def _associate_publish_events_to_subscription_callbacks(graph: Graph):
+    def _associate(publisher: Publisher, subscription: Subscription):
+        for pub_event in publisher.events:
+            found_idx = 0
+            sub_events = subscription.callback.events()
+            for idx, sub_event in enumerate(sub_events[found_idx:]):
+                if (
+                    pub_event.timestamp() > sub_event.start()
+                    and pub_event.timestamp() < sub_event.end()
+                ):
+                    pub_event.trigger = sub_event
+                    found_idx += idx
 
-        for ii, (p, t) in enumerate(zip(publisher.events(), timer.callback().events())):
-            if ii == max_idx:
-                break
-            p._trigger = t
-
-def _associate_subscriptions_to_publishers(graph: Graph):
-    candidates = []
-
-    for node in graph.nodes():
-        for sub in node.subscriptions():
-            for publisher in node.publishers():
-                if np.abs(len(sub.callback().events()) - len(publisher.events())) < 5:
-                    candidates.append((sub, publisher))
-
-    logger.debug(f'Found {len(candidates)} candidate publishers in subscription callbacks')
-
-    for (sub, publisher) in candidates:
-        starts = [cb.start() for cb in sub.callback().events()]
-        ends = [cb.end() for cb in sub.callback().events()]
-        pubs = [p._rclcpp_init_time for p in publisher.events()]
-        max_idx = min(len(starts), len(pubs))
-        starts = starts[0:max_idx]
-        ends = ends[0:max_idx]
-        pubs = pubs[0:max_idx]
-        if not (np.all(pubs > starts) and np.all(pubs < ends)):
-            continue
-
-        for ii, (p, t) in enumerate(zip(publisher.events(), sub.callback().events())):
-            if ii == max_idx:
-                break
-            p._trigger = t
+    for node in graph.nodes:
+        for subscription in node.subscriptions:
+            for publisher in node.publishers:
+                if abs(len(publisher.events) - len(subscription.callback.events())) < 5:
+                    _associate(publisher, subscription)
