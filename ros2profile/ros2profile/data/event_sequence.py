@@ -5,6 +5,7 @@ from .timer import Timer
 from .subscription import SubscriptionEvent
 from .publisher import PublishEvent
 
+
 class EventSequence():
     def __init__(self, end_event, start_event=None):
         self.start_event = start_event
@@ -21,75 +22,51 @@ class EventSequence():
         self.sequence = []
 
         while event and event != start_event:
-            if type(event) is CallbackEvent:
-                if type(event.source()) is Timer:
+            if isinstance(event, CallbackEvent):
+                if isinstance(event.source, Timer):
                     self.sequence.append({
-                        'node': event.source().node().name(),
-                        'event': 'callback_end',
+                        'node': event.source.node.name,
+                        'event': 'ros2:callback_end',
                         'topic': 'timer',
                         'timestamp': event.end()
                     })
                     self.sequence.append({
-                        'node': event.source().node().name(),
-                        'event': 'callback_start',
+                        'node': event.source.node.name,
+                        'event': 'ros2:callback_start',
                         'topic': 'timer',
                         'timestamp': event.start()
                     })
                 else:
                     self.sequence.append({
-                        'node': event.source().node().name(),
-                        'event': 'callback_end',
-                        'topic': event.source().topic_name(),
+                        'node': event.source.node.name,
+                        'event': 'ros2:callback_end',
+                        'topic': event.source.name,
                         'timestamp': event.end()
                     })
                     self.sequence.append({
-                        'node': event.source().node().name(),
-                        'event': 'callback_start',
-                        'topic': event.source().topic_name(),
+                        'node': event.source.node.name,
+                        'event': 'ros2:callback_start',
+                        'topic': event.source.name,
                         'timestamp': event.start()
                     })
-
-                event = event.trigger()
-            elif type(event) is SubscriptionEvent:
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rclcpp_take',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rclcpp_init_time
-                })
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rcl_take',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rcl_init_time
-                })
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rmw_take',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rmw_init_time
-                })
-                event = event.trigger()
-            elif type(event) is PublishEvent:
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rclcpp_pub',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rclcpp_init_time
-                })
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rcl_pub',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rcl_init_time
-                })
-                self.sequence.append({
-                    'node': event.source().node().name(),
-                    'event': 'rmw_pub',
-                    'topic': event.source().topic_name(),
-                    'timestamp': event._rmw_init_time
-                })
-
-                event = event.trigger()
+                event = event.trigger
+            elif isinstance(event, SubscriptionEvent):
+                for stamp_key, stamp_value in event._stamps.items():
+                    self.sequence.append({
+                        'node': event.source.node.name,
+                        'event': stamp_key,
+                        'topic': event.source.name,
+                        'timestamp': stamp_value,
+                    })
+                event = event.trigger
+            elif isinstance(event, PublishEvent):
+                for stamp_key, stamp_value in event._stamps.items():
+                    self.sequence.append({
+                        'node': event.source.node.name,
+                        'event': stamp_key,
+                        'topic': event.source.name,
+                        'timestamp': stamp_value,
+                    })
+                event = event.trigger
             else:
                 break

@@ -420,7 +420,7 @@ def _build_subscription_events(
     read_events: List[SubscriptionEvent] = []
 
     for event_stream in events.values():
-        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]))
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]), reverse=True)
         cur_event = None
         for entry in event_stream:
             if entry["_name"] == constants.RCLCPP_TAKE:
@@ -475,10 +475,11 @@ def _associate_subscription_callbacks(graph: Graph):
 
 def _associate_timer_callbacks(graph: Graph):
     for timer in graph.timers():
-        timer_cb_events = timer.callback.events()
         timer.callback.source = timer
+        timer_cb_events = timer.callback.events()
 
         for timer_cb_event in timer_cb_events:
+            timer_cb_event.source = timer
             timer_cb_event.trigger = timer
 
 

@@ -231,5 +231,5 @@ class Graph:
 
     def topic_by_name(self, topic_name: str) -> Optional[Topic]:
         for topic in self._topics.values():
-            if topic.topic_name().find(topic_name) >= 0:
+            if topic.name.find(topic_name) >= 0:
                 return topic

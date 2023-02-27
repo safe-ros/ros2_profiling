@@ -14,9 +14,7 @@ class Timer(GraphEntity):
 
     @property
     def callback(self) -> Callback:
-        '''
-        Callback associated with this subscription
-        '''
+        """Callback associated with this subscription."""
         return self._callback
 
     @callback.setter
@@ -25,9 +23,7 @@ class Timer(GraphEntity):
 
     @property
     def callback_handle(self) -> int:
-        '''
-        Callback handle associated with this subscription
-        '''
+        """Callback handle associated with this subscription."""
         return self._callback_handle
 
     @callback_handle.setter
@@ -36,9 +32,7 @@ class Timer(GraphEntity):
 
     @property
     def period(self) -> int:
-        '''
-        Period of the timer
-        '''
+        """Period of the timer."""
         return self._period
 
     @period.setter
@@ -46,8 +40,9 @@ class Timer(GraphEntity):
         self._period = value
 
     def mean_period(self) -> int:
+        """Return the average period of the timer callback events."""
         calls = np.array([ev.start() for ev in self.callback.events()])
         return np.mean(np.diff(calls))
 
     def __repr__(self) -> str:
-        return f'<Timer handle={self._handle} period={self._period}>'
+        return f"<Timer handle={self._handle} period={self._period}>"

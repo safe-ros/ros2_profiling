@@ -34,11 +34,11 @@ class SubscriptionEvent:
         self._dds_reader = value
 
     @property
-    def source(self) -> 'Subscription':
+    def source(self) -> "Subscription":
         return self._source
 
     @source.setter
-    def source(self, value: 'Subscription') -> None:
+    def source(self, value: "Subscription") -> None:
         self._source = value
 
     def trigger(self):
@@ -48,9 +48,9 @@ class SubscriptionEvent:
         return f"<SubscriptionEvent handle={self._handle}>"
 
     def add_stamp(self, key: str, value: int) -> None:
-        '''
+        """
         Add a timestamp to this graph entity
-        '''
+        """
         self._stamps[key] = value
 
     def timestamp(self) -> int:
@@ -69,7 +69,7 @@ class Subscription(GraphEntity):
         super().__init__(
             handle=subscription_handle,
             rmw_handle=rmw_subscription_handle,
-            node_handle=node_handle
+            node_handle=node_handle,
         )
         self._gid: List[int]
 
@@ -87,7 +87,7 @@ class Subscription(GraphEntity):
     @property
     def name(self) -> str:
         """
-        The identifier of this subscription
+        The identifier of this subscription.
         """
         return expand_topic_name(
             self._topic_name, self._node.name, self._node.namespace
@@ -96,21 +96,21 @@ class Subscription(GraphEntity):
     @property
     def gid(self) -> List[int]:
         """
-        The underlying DDS GUID of this subscription
+        The underlying DDS GUID of this subscription.
         """
         return self._gid
 
     @gid.setter
     def gid(self, value: List[int]) -> None:
         """
-        The underlying DDS GUID of this subscription
+        The underlying DDS GUID of this subscription.
         """
         self._gid = value
 
     @property
     def dds_reader_handle(self) -> int:
         """
-        The underlying DDS reader of this subscription
+        The underlying DDS reader of this subscription.
         """
         return self._dds_reader
 
@@ -121,7 +121,7 @@ class Subscription(GraphEntity):
     @property
     def dds_topic_name(self) -> str:
         """
-        The underlying DDS topic of this subscription
+        The underlying DDS topic of this subscription.
         """
         return self._dds_topic_name
 
@@ -131,9 +131,9 @@ class Subscription(GraphEntity):
 
     @property
     def callback(self) -> Callback:
-        '''
-        Callback associated with this subscription
-        '''
+        """
+        Callback associated with this subscription.
+        """
         return self._callback
 
     @callback.setter
@@ -142,9 +142,9 @@ class Subscription(GraphEntity):
 
     @property
     def callback_handle(self) -> int:
-        '''
-        Callback handle associated with this subscription
-        '''
+        """
+        Callback handle associated with this subscription.
+        """
         return self._callback_handle
 
     @callback_handle.setter
@@ -153,9 +153,9 @@ class Subscription(GraphEntity):
 
     @property
     def reference(self) -> int:
-        '''
-        Reference associated with the subscription callback
-        '''
+        """
+        Reference associated with the subscription callback.
+        """
         return self._reference
 
     @reference.setter
@@ -165,7 +165,7 @@ class Subscription(GraphEntity):
     @property
     def events(self) -> List[Any]:
         """
-        List of events corresponding to this subscription
+        List of events corresponding to this subscription.
         """
         return self._events
 
