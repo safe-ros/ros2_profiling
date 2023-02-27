@@ -17,6 +17,7 @@ from .subscription import Subscription
 
 from typing import List
 
+
 class Topic:
     def __init__(self, topic_name: str):
         self._topic_name = topic_name

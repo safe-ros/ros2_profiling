@@ -14,5 +14,6 @@
 
 import subprocess
 
+
 def run_test(input_path, test_file):
     subprocess.run(['pytest-3', '--input-dir', input_path, test_file])

@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Any, Union
+from typing import List, Any
+
 
 def _prettify(
     original: str,
@@ -51,7 +52,7 @@ def _prettify(
                     done = True
                 else:
                     level -= 1
-        pretty = pretty[:dd_start] + pretty[(template_param_close + 1) :]
+        pretty = pretty[:dd_start] + pretty[(template_param_close + 1):]
     # bind
     std_bind = "std::_Bind<"
     if pretty.startswith(std_bind):
@@ -61,15 +62,17 @@ def _prettify(
         # remove placeholder stuff
         placeholder_from = pretty.find("*")
         placeholder_to = pretty.find(")", placeholder_from)
-        pretty = pretty[:placeholder_from] + "?" + pretty[(placeholder_to + 1) :]
+        pretty = (pretty[:placeholder_from] + "?" +
+                  pretty[(placeholder_to + 1):])
     # remove dangling comma
     pretty = pretty.replace(",>", ">")
     # restore meaningful spaces
     if pretty.startswith("void"):
-        pretty = "void" + " " + pretty[len("void") :]
+        pretty = "void" + " " + pretty[len("void"):]
     if pretty.endswith("const"):
         pretty = pretty[: (len(pretty) - len("const"))] + " " + "const"
     return pretty
+
 
 class CallbackEvent:
     def __init__(self, callback_handle: int, is_intra_process: bool) -> None:
@@ -116,7 +119,12 @@ class CallbackEvent:
         return self.end() - self.start()
 
     def __repr__(self) -> str:
-        return f"<CallbackEvent handle={self._callback_handle} start={self.start()} duration={self.duration()}>"
+        content = " ".join([
+            f"handle={self._callback_handle}",
+            f"start={self.start()}",
+            f"duration={self.duration()}",
+        ])
+        return f"<CallbackEvent {content}>"
 
 
 class Callback:

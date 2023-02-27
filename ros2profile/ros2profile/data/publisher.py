@@ -69,7 +69,6 @@ class PublishEvent:
         return min(self._stamps.values())
 
 
-
 class Publisher(GraphEntity):
     def __init__(
         self,

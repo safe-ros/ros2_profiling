@@ -22,8 +22,6 @@ from .node import Node
 from .topic import Topic
 from .timer import Timer
 
-from .utils import filter_topics
-
 
 class Graph:
     '''

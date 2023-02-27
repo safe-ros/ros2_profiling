@@ -22,6 +22,7 @@ from ros2profile.verb import VerbExtension
 
 import launch
 import launch.event_handlers
+import launch.launch_description_sources
 from launch.some_actions_type import SomeActionsType
 import launch_ros.actions
 
@@ -30,7 +31,7 @@ from tracetools_trace.tools import path
 
 
 class LaunchVerb(VerbExtension):
-    def add_arguments(self, parser, cli_name):  #noqa: D102
+    def add_arguments(self, parser, cli_name):  # noqa: D102
         parser.add_argument(
             '--launch-file', help='Launch file containing description of system under test'
         )
@@ -137,10 +138,10 @@ class LaunchVerb(VerbExtension):
                         }])
 
         if 'topnode' in config and 'nodes' in config['topnode']:
-                nodes = config['topnode']['nodes']
-                launch_description.add_action(launch.actions.RegisterEventHandler(
-                        launch.event_handlers.OnProcessStart(on_start=on_start)
-                ))
+            nodes = config['topnode']['nodes']
+            launch_description.add_action(launch.actions.RegisterEventHandler(
+                    launch.event_handlers.OnProcessStart(on_start=on_start)
+            ))
 
         launch_service = launch.LaunchService()
         launch_service.include_launch_description(launch_description)

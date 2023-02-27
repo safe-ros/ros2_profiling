@@ -17,6 +17,7 @@ from typing import Dict, TYPE_CHECKING
 if TYPE_CHECKING:
     from .node import Node
 
+
 class GraphEntity:
     """
     Base class of an entity in the ROS computation graph

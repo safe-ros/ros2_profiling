@@ -26,7 +26,6 @@ from .graph import Graph
 from .publisher import Publisher, PublishEvent
 from .subscription import Subscription, SubscriptionEvent
 from .timer import Timer
-from .topic import Topic
 from . import constants
 
 logging.basicConfig()

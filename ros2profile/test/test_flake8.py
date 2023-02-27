@@ -1,4 +1,4 @@
-# Copyright 2023 Open Source Robotics Foundation
+# Copyright 2023 Open Source Robotics Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import time
+from ament_flake8.main import main_with_errors
+import pytest
 
 
-def get_output_directory(session_name):
-    output_dir = os.environ.get('ROS_HOME')
-    if not output_dir:
-        output_dir = os.path.join('~', '.ros')
-    session_dir = session_name + '-' + time.strftime('%Y%m%d%H%M%S')
-    output_dir = os.path.join(output_dir, 'profile', session_dir)
-    return os.path.normpath(os.path.expanduser(output_dir))
+@pytest.mark.flake8
+@pytest.mark.linter
+def test_flake8():
+    rc, errors = main_with_errors(argv=[])
+    assert rc == 0, \
+        'Found %d code style errors / warnings:\n' % len(errors) + \
+        '\n'.join(errors)
