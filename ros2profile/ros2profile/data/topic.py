@@ -19,10 +19,10 @@ from typing import List
 
 
 class Topic:
-    def __init__(self, topic_name: str):
-        self._topic_name = topic_name
-        self._publishers = []
-        self._subscriptions = []
+    def __init__(self, topic_name: str) -> None:
+        self._topic_name: str = topic_name
+        self._publishers: List[Publisher] = []
+        self._subscriptions: List[Subscription] = []
 
     def add_publisher(self, publisher: Publisher) -> None:
         self._publishers.append(publisher)

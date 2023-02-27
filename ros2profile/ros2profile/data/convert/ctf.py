@@ -16,7 +16,7 @@ import lzma
 import pickle
 
 from collections import defaultdict
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union, Callable
 
 import bt2
 
@@ -24,7 +24,9 @@ DictEvent = Dict[str, Any]
 DictEvents = List[DictEvent]
 CtfEvents = Dict[str, DictEvents]
 
-BT2_CONV_FUNC = {
+ConversionFunction = Callable[[str], Union[bool, int, str, List[int]]]
+
+BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
     "node_handle": int,
     "rmw_publisher_handle": int,
     "rmw_subscription_handle": int,

@@ -118,24 +118,26 @@ class LaunchVerb(VerbExtension):
 
         def on_start(event: launch.events.process.ProcessStarted,
                      context: launch.launch_context.LaunchContext) -> Optional[SomeActionsType]:
-            if event.action.node_name in nodes:
-                pid = event.pid
+            if event.action.node_name not in nodes:
+                return None
 
-                return launch_ros.actions.Node(
-                       name=f'topnode_{pid}',
-                       namespace='',
-                       package='topnode',
-                       executable='resource_monitor',
-                       output='screen',
-                       parameters=[{
-                           "publish_period_ms": 500,
-                           "record_cpu_memory_usage": True,
-                           "record_memory_state": True,
-                           "record_io_stats": True,
-                           "record_stat": True,
-                           "record_file": f'{output_dir}{event.action.node_name}_{pid}.mcap',
-                           "pid": pid
-                        }])
+            pid = event.pid
+
+            return launch_ros.actions.Node(
+                   name=f'topnode_{pid}',
+                   namespace='',
+                   package='topnode',
+                   executable='resource_monitor',
+                   output='screen',
+                   parameters=[{
+                       "publish_period_ms": 500,
+                       "record_cpu_memory_usage": True,
+                       "record_memory_state": True,
+                       "record_io_stats": True,
+                       "record_stat": True,
+                       "record_file": f'{output_dir}{event.action.node_name}_{pid}.mcap',
+                       "pid": pid
+                    }])
 
         if 'topnode' in config and 'nodes' in config['topnode']:
             nodes = config['topnode']['nodes']

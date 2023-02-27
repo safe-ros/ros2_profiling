@@ -154,6 +154,14 @@ class Callback:
         self._handle = value
 
     @property
+    def source(self) -> Any:
+        return self._source
+
+    @source.setter
+    def source(self, value: Any):
+        self._source = value
+
+    @property
     def symbol(self) -> str:
         """
         The callback C++ symbol of this callback

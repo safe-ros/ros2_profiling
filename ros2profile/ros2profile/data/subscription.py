@@ -28,6 +28,8 @@ class SubscriptionEvent:
 
         self._trigger = None
         self._source: Subscription
+        self._source_timestamp: int
+        self._taken: bool
 
         self._stamps: Dict[str, int] = {}
 
@@ -54,6 +56,22 @@ class SubscriptionEvent:
     @source.setter
     def source(self, value: "Subscription") -> None:
         self._source = value
+
+    @property
+    def taken(self) -> bool:
+        return self._taken
+
+    @taken.setter
+    def taken(self, value: bool) -> None:
+        self._taken = value
+
+    @property
+    def source_timestamp(self) -> int:
+        return self._source_timestamp
+
+    @source_timestamp.setter
+    def source_timestamp(self, value: int) -> None:
+        self._source_timestamp = value
 
     def trigger(self):
         return self._trigger

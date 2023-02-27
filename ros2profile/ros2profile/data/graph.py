@@ -245,3 +245,4 @@ class Graph:
         for topic in self._topics.values():
             if topic.name.find(topic_name) >= 0:
                 return topic
+        return None
