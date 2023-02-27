@@ -105,9 +105,15 @@ def process_one(input_file):
 
 def process(input_path):
     mcap_files = glob.glob(input_path + '*.mcap')
-    print(f'Processing {len(mcap_files)} topnode files')
 
+    to_process = []
     for mcap_file in mcap_files:
+        base = os.path.splitext(mcap_file)[0]
+        if not os.path.exists(base + '.converted'):
+            to_process.append(base)
+    print(f'Processing {len(to_process)} topnode files ({len(mcap_files)} cached)')
+
+    for mcap_file in to_process:
         base = os.path.splitext(mcap_file)[0]
         data = process_one(mcap_file)
 
@@ -115,12 +121,12 @@ def process(input_path):
             p = pickle.Pickler(f, protocol=4)
             p.dump(data)
 
-    events = load_ctf(input_path)
-    graph = build_graph(events)
-
-    with open(os.path.join(input_path, 'event_graph'), 'wb') as f:
-        p = pickle.Pickler(f, protocol=4)
-        p.dump(graph)
+    if not os.path.exists(os.path.join(input_path, 'event_graph')):
+        events = load_ctf(input_path)
+        graph = build_graph(events)
+        with open(os.path.join(input_path, 'event_graph'), 'wb') as f:
+            p = pickle.Pickler(f, protocol=4)
+            p.dump(graph)
 
 
 def load_mcap_data(input_path):

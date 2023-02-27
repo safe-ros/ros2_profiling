@@ -2,9 +2,9 @@ import numpy as np
 
 def test_graph(profile_event_graph):
     graph = profile_event_graph
-    assert len(graph.nodes()) == 24
-    assert len(graph.topics()) == 25
-    assert len(graph.publishers()) == 25
+    assert len(graph.nodes()) == 31
+    assert len(graph.topics()) == 29
+    assert len(graph.publishers()) == 29
     assert len(graph.subscriptions()) == 36
 
 
