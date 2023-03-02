@@ -25,6 +25,7 @@ DictEvents = List[DictEvent]
 CtfEvents = Dict[str, DictEvents]
 
 BT2_CONV_FUNC = {
+    "context_handle": int,
     "node_handle": int,
     "rmw_publisher_handle": int,
     "rmw_subscription_handle": int,
