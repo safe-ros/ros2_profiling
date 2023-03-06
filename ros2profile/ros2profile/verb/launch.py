@@ -1,3 +1,16 @@
+# Copyright 2023 Open Source Robotics Foundation, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import os
 import shutil
@@ -9,6 +22,7 @@ from ros2profile.verb import VerbExtension
 
 import launch
 import launch.event_handlers
+import launch.launch_description_sources
 from launch.some_actions_type import SomeActionsType
 import launch_ros.actions
 
@@ -17,7 +31,7 @@ from tracetools_trace.tools import path
 
 
 class LaunchVerb(VerbExtension):
-    def add_arguments(self, parser, cli_name):  #noqa: D102
+    def add_arguments(self, parser, cli_name):  # noqa: D102
         parser.add_argument(
             '--launch-file', help='Launch file containing description of system under test'
         )
@@ -104,30 +118,32 @@ class LaunchVerb(VerbExtension):
 
         def on_start(event: launch.events.process.ProcessStarted,
                      context: launch.launch_context.LaunchContext) -> Optional[SomeActionsType]:
-            if event.action.node_name in nodes:
-                pid = event.pid
+            if event.action.node_name not in nodes:
+                return None
 
-                return launch_ros.actions.Node(
-                       name=f'topnode_{pid}',
-                       namespace='',
-                       package='topnode',
-                       executable='resource_monitor',
-                       output='screen',
-                       parameters=[{
-                           "publish_period_ms": 500,
-                           "record_cpu_memory_usage": True,
-                           "record_memory_state": True,
-                           "record_io_stats": True,
-                           "record_stat": True,
-                           "record_file": f'{output_dir}{event.action.node_name}_{pid}.mcap',
-                           "pid": pid
-                        }])
+            pid = event.pid
+
+            return launch_ros.actions.Node(
+                   name=f'topnode_{pid}',
+                   namespace='',
+                   package='topnode',
+                   executable='resource_monitor',
+                   output='screen',
+                   parameters=[{
+                       "publish_period_ms": 500,
+                       "record_cpu_memory_usage": True,
+                       "record_memory_state": True,
+                       "record_io_stats": True,
+                       "record_stat": True,
+                       "record_file": f'{output_dir}{event.action.node_name}_{pid}.mcap',
+                       "pid": pid
+                    }])
 
         if 'topnode' in config and 'nodes' in config['topnode']:
-                nodes = config['topnode']['nodes']
-                launch_description.add_action(launch.actions.RegisterEventHandler(
-                        launch.event_handlers.OnProcessStart(on_start=on_start)
-                ))
+            nodes = config['topnode']['nodes']
+            launch_description.add_action(launch.actions.RegisterEventHandler(
+                    launch.event_handlers.OnProcessStart(on_start=on_start)
+            ))
 
         launch_service = launch.LaunchService()
         launch_service.include_launch_description(launch_description)

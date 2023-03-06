@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-def filter_topics(collection, rosout: bool = False, parameter_events: bool = False):
-    ret = []
-    for val in collection:
-        if not rosout and val.topic_name().find('rosout') >= 0:
-            continue
-        if not parameter_events and val.topic_name().find('parameter_events') >= 0:
-            continue
-        ret.append(val)
-    return ret
+from ament_copyright.main import main
+import pytest
+
+
+@pytest.mark.copyright
+@pytest.mark.linter
+def test_copyright():
+    rc = main(argv=['.', 'test'])
+    assert rc == 0, 'Found errors'
