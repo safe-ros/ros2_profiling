@@ -27,6 +27,7 @@ CtfEvents = Dict[str, DictEvents]
 ConversionFunction = Callable[[str], Union[bool, int, str, List[int]]]
 
 BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
+    "context_handle": int,
     "node_handle": int,
     "rmw_publisher_handle": int,
     "rmw_subscription_handle": int,
