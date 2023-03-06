@@ -23,6 +23,7 @@ import pandas as pd
 from ros2profile.data.convert.ctf import load_ctf
 from ros2profile.data import build_graph
 
+
 def process_memory_state(msg):
     return {
         '_log_time': msg.log_time,
@@ -34,6 +35,7 @@ def process_memory_state(msg):
         'data_size': msg.ros_msg.data_size,
         'dirty_pages': msg.ros_msg.dirty_pages
     }
+
 
 def process_io_stats(msg):
     return {
@@ -47,10 +49,12 @@ def process_io_stats(msg):
         'cancelled_byte_writes': msg.ros_msg.cancelled_byte_writes
     }
 
+
 def process_stat(msg):
     return {
         '_log_time': msg.log_time,
     }
+
 
 def process_cpu_memory_usage(msg):
     return {
@@ -83,6 +87,7 @@ PROCESSORS = {
     'topnode_interfaces/msg/CpuMemoryUsage': process_cpu_memory_usage,
     'topnode_interfaces/msg/Stat': process_stat
 }
+
 
 def process_one(input_file):
     data = {}
@@ -142,6 +147,7 @@ def load_mcap_data(input_path):
                 mcap_data = p.load()
             data[os.path.basename(base)] = mcap_data
     return data
+
 
 def load_event_graph(input_path):
     if not os.path.exists(os.path.join(input_path, 'event_graph')):

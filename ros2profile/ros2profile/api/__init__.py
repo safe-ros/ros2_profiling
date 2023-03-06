@@ -14,7 +14,6 @@
 
 import os
 import time
-import yaml
 
 
 def get_output_directory(session_name):
@@ -24,38 +23,3 @@ def get_output_directory(session_name):
     session_dir = session_name + '-' + time.strftime('%Y%m%d%H%M%S')
     output_dir = os.path.join(output_dir, 'profile', session_dir)
     return os.path.normpath(os.path.expanduser(output_dir))
-
-class Node:
-    def __init__(self, name, package, plugin):
-        self.name = name
-        self.package = package
-        self.plugin = plugin
-
-class Container:
-    def __init__(self, name, type, nodes, namespace=None, package=None):
-        self.name = name
-        self.nodes = nodes
-        self.type = type
-        self.namespace = namespace if namespace else ''
-        self.package = package if package else 'rclcpp_components'
-
-
-class ProfileConfiguration():
-    def __init__(self, config_file):
-        self.nodes = {}
-        self.containers = {}
-
-        config = None
-        with open(config_file, 'r') as f:
-            config = yaml.load(f, Loader=yaml.SafeLoader)
-
-        if not config:
-            return
-
-        for node in config['nodes']:
-            n = Node(**node)
-            self.nodes[n.name] = n
-
-        for container in config['containers']:
-            c = Container(**container)
-            self.containers[c.name] = c
