@@ -21,8 +21,8 @@ from .graph_entity import GraphEntity
 
 
 class SubscriptionEvent:
-    def __init__(self, message_handle: int) -> None:
-        self._handle: int = message_handle
+    def __init__(self) -> None:
+        self._handle: int
         self._rmw_subscription_handle: int
         self._dds_reader: int
 
@@ -32,6 +32,14 @@ class SubscriptionEvent:
         self._taken: bool
 
         self._stamps: Dict[str, int] = {}
+
+    @property
+    def message_handle(self) -> int:
+        return self._handle
+
+    @message_handle.setter
+    def message_handle(self, value: int) -> None:
+        self._handle = value
 
     @property
     def rmw_subscription_handle(self) -> int:
