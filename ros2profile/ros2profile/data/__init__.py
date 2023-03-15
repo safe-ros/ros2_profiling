@@ -433,24 +433,24 @@ def _build_subscription_events(
     read_events: List[SubscriptionEvent] = []
 
     for event_stream in events.values():
-        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]), reverse=True)
-        cur_event = None
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]))
+        cur_event = SubscriptionEvent()
         for entry in event_stream:
-            if entry["_name"] == constants.RCLCPP_TAKE:
-                cur_event = SubscriptionEvent(entry["message"])
-                cur_event.add_stamp(constants.RCLCPP_TAKE, entry["_timestamp"])
-            if cur_event:
-                if entry["_name"] == constants.RCL_TAKE:
-                    cur_event.add_stamp(constants.RCL_TAKE, entry["_timestamp"])
-                elif entry["_name"] == constants.RMW_TAKE:
-                    cur_event.add_stamp(constants.RMW_TAKE, entry["_timestamp"])
-                    cur_event.rmw_subscription_handle = entry["rmw_subscription_handle"]
-                    cur_event.source_timestamp = entry["source_timestamp"]
-                    cur_event.taken = entry["taken"]
-                elif entry["_name"] == constants.DDS_READ:
-                    cur_event.add_stamp(constants.DDS_READ, entry["_timestamp"])
-                    cur_event.dds_reader = entry["reader"]
-                    read_events.append(cur_event)
+            if entry["_name"] in (constants.RCLCPP_TAKE, constants.RCL_TAKE):
+                cur_event.add_stamp(entry["_name"], entry["_timestamp"])
+            elif  entry["_name"] == constants.RMW_TAKE:
+                cur_event.add_stamp(entry["_name"], entry["_timestamp"])
+                cur_event.message_handle = entry["message"]
+                cur_event.rmw_subscription_handle = entry["rmw_subscription_handle"]
+                cur_event.source_timestamp = entry["source_timestamp"]
+                cur_event.taken = entry["taken"]
+            elif entry["_name"] == constants.DDS_READ:
+                cur_event.add_stamp(constants.DDS_READ, entry["_timestamp"])
+                cur_event.dds_reader = entry["reader"]
+
+            if len(cur_event._stamps) == 4:
+                read_events.append(cur_event)
+                cur_event = SubscriptionEvent()
 
     logger.info("Found %i subscription events", len(read_events))
 
