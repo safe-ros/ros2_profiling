@@ -120,7 +120,7 @@ def process(input_path):
 
     for mcap_file in to_process:
         base = os.path.splitext(mcap_file)[0]
-        data = process_one(mcap_file)
+        data = process_one(mcap_file + '.mcap')
 
         with open(base + '.converted', 'wb') as f:
             p = pickle.Pickler(f, protocol=4)
