@@ -121,6 +121,13 @@ $ ros2 run tracetools status
 Tracing enabled
 ```
 
+Set CycloneDDS as the used middleware. An instrumented version of CycloneDDS is part of the demo workspace.
+These instrumentations are required for ros2_profiling to work properly.
+
+```
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+
 Then launch the demonstration system with the specified configuration:
 
 
