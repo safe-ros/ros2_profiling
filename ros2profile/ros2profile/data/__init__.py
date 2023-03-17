@@ -534,45 +534,41 @@ def _associate_subscription_event_to_publish_event(graph: Graph):
         if len(topic.subscriptions) == 0 or len(topic.publishers) == 0:
             continue
         for subscription in topic.subscriptions:
+            if len(subscription.events) == 0:
+                continue
             for publisher in topic.publishers:
-                if len(subscription.events) == 0 or len(publisher.events) == 0:
+                if len(publisher.events) == 0:
                     continue
                 _associate(publisher, subscription)
 
 
 def _associate_publish_events_to_timer_callbacks(graph: Graph):
-    def _associate(timer: Timer, publisher: Publisher):
-        if len(timer.callback.events()) != len(publisher.events):
-            return
-        for timer_event in timer.callback.events():
-            for publisher_event in publisher.events:
-                if (
-                    timer_event.start() < publisher_event.timestamp()
-                    and publisher_event.timestamp() < timer_event.end()
-                ):
-                    publisher_event.trigger = timer_event
-
     for node in graph.nodes:
         for timer in node.timers:
             for publisher in node.publishers:
-                _associate(timer, publisher)
+                _associate_publisher_to_callback(publisher, timer.callback)
 
 
 def _associate_publish_events_to_subscription_callbacks(graph: Graph):
-    def _associate(publisher: Publisher, subscription: Subscription):
-        for pub_event in publisher.events:
-            found_idx = 0
-            sub_events = subscription.callback.events()
-            for idx, sub_event in enumerate(sub_events[found_idx:]):
-                if (
-                    pub_event.timestamp() > sub_event.start()
-                    and pub_event.timestamp() < sub_event.end()
-                ):
-                    pub_event.trigger = sub_event
-                    found_idx += idx
-
     for node in graph.nodes:
         for subscription in node.subscriptions:
             for publisher in node.publishers:
                 if abs(len(publisher.events) - len(subscription.callback.events())) < 5:
-                    _associate(publisher, subscription)
+                    _associate_publisher_to_callback(publisher, subscription.callback)
+
+def _associate_publisher_to_callback(publisher: Publisher, callback: Callback):
+    pub_idx = 0
+    sub_idx = 0
+    pub_events = publisher.events
+    sub_events = callback.events()
+    
+    while pub_idx < len(pub_events) and sub_idx < len(sub_events):
+        pub_event = pub_events[pub_idx]
+        sub_event = sub_events[pub_idx]
+        if pub_event.timestamp() < sub_event.start():
+            pub_idx += 1
+        elif pub_event.timestamp() > sub_event.end():
+            sub_idx += 1
+        else:
+            pub_event.trigger = sub_event
+            pub_idx += 1
