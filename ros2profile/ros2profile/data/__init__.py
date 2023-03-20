@@ -564,7 +564,7 @@ def _associate_publisher_to_callback(publisher: Publisher, callback: Callback):
     
     while pub_idx < len(pub_events) and sub_idx < len(sub_events):
         pub_event = pub_events[pub_idx]
-        sub_event = sub_events[pub_idx]
+        sub_event = sub_events[sub_idx]
         if pub_event.timestamp() < sub_event.start():
             pub_idx += 1
         elif pub_event.timestamp() > sub_event.end():
