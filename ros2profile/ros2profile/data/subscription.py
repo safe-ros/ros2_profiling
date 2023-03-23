@@ -81,8 +81,13 @@ class SubscriptionEvent:
     def source_timestamp(self, value: int) -> None:
         self._source_timestamp = value
 
-    def trigger(self):
+    @property
+    def trigger(self) -> Any:
         return self._trigger
+
+    @trigger.setter
+    def trigger(self, value: Any):
+        self._trigger = value
 
     def __repr__(self) -> str:
         return f"<SubscriptionEvent handle={self._handle}>"
