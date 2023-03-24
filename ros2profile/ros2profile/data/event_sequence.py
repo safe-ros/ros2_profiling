@@ -16,8 +16,8 @@ from typing import Any, List
 
 from .callback import CallbackEvent
 from .timer import Timer
-from .subscription import SubscriptionEvent
-from .publisher import PublishEvent
+from .subscription import SubscriptionEventBase
+from .publisher import PublishEventBase
 
 
 class EventSequence():
@@ -64,7 +64,7 @@ class EventSequence():
                         'timestamp': event.start()
                     })
                 event = event.trigger
-            elif isinstance(event, SubscriptionEvent):
+            elif isinstance(event, SubscriptionEventBase):
                 for stamp_key, stamp_value in event._stamps.items():
                     self.sequence.append({
                         'node': event.source.node.name,
@@ -73,7 +73,7 @@ class EventSequence():
                         'timestamp': stamp_value,
                     })
                 event = event.trigger
-            elif isinstance(event, PublishEvent):
+            elif isinstance(event, PublishEventBase):
                 for stamp_key, stamp_value in event._stamps.items():
                     self.sequence.append({
                         'node': event.source.node.name,

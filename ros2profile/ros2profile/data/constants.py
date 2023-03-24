@@ -43,3 +43,12 @@ RCLCPP_TAKE = 'ros2:rclcpp_take'
 RCL_TAKE = 'ros2:rcl_take'
 RMW_TAKE = 'ros2:rmw_take'
 DDS_READ = 'dds:read'
+
+RCLCPP_IPB_TO_SUBSCRIPTION = 'ros2:rclcpp_ipb_to_subscription'
+RCLCPP_BUFFER_TO_TYPED_IPB = 'ros2:rclcpp_buffer_to_ipb'
+RCLCPP_CONSTRUCT_RINGBUFFER = 'ros2:rclcpp_construct_ring_buffer'
+RCLCPP_RINGBUFFER_ENQUEUE = 'ros2:rclcpp_ring_buffer_enqueue'
+RCLCPP_RINGBUFFER_DEQUEUE = 'ros2:rclcpp_ring_buffer_dequeue'
+RCLCPP_RINGBUFFER_CLEAR = 'ros2:rclcpp_ring_buffer_clear'
+RCLCPP_INTRA_PUBLISH = 'ros2:rclcpp_intra_publish'
+
