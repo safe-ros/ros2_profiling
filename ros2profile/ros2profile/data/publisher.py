@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List
+from typing import Dict, List, Any
 from rclpy.expand_topic_name import expand_topic_name
 
 from .graph_entity import GraphEntity
@@ -53,8 +53,14 @@ class PublishEvent:
     def source(self, value: 'Publisher') -> None:
         self._source = value
 
-    def trigger(self):
+    @property
+    def trigger(self) -> Any:
         return self._trigger
+
+    @trigger.setter
+    def trigger(self, value: Any):
+        self._trigger = value
+
 
     def __repr__(self) -> str:
         return f"<PublishEvent handle={self._handle}>"
