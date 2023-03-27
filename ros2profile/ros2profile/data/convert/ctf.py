@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import lzma
 import pickle
 
@@ -115,6 +116,8 @@ def load_ctf(directory: str, ignore_names: List[str] = LTTNG_IGNORE_NAMES) -> Ct
     events = defaultdict(list)
 
     for msg in msg_it:
+        if type(msg) is bt2._DiscardedEventsMessageConst:
+           logging.warning("Trace lost packets! Data association may fail! Measurements may be missing!")
         if type(msg) is not bt2._EventMessageConst or msg.event.name in ignore_names:
             continue
         pod = event_to_dict(msg)
