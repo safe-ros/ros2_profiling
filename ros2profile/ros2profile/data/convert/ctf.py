@@ -74,6 +74,11 @@ BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
     "index": int,
     "size": int,
     "overwritten": bool,
+    "ptr": int,
+    "nmemb": int,
+    "in_ptr": int,
+    "alignment": int,
+    "memptr": int,
 }
 
 LTTNG_IGNORE_NAMES = [
