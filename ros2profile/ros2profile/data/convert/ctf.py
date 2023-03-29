@@ -79,6 +79,8 @@ BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
     "in_ptr": int,
     "alignment": int,
     "memptr": int,
+    "mutex": int,
+    "status": int,
 }
 
 LTTNG_IGNORE_NAMES = [
