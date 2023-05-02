@@ -32,7 +32,7 @@ class Graph:
         self._nodes: Dict[int, Node] = {}
         self._callbacks: Dict[int, Callback] = {}
         self._publishers: Dict[int, Publisher] = {}
-        self._subscriptions: Dict[int, Subscription] = {}
+        self._subscriptions: [Subscription] = []
         self._topics: Dict[str, Topic] = {}
         self._timers: Dict[int, Timer] = {}
 
@@ -160,7 +160,7 @@ class Graph:
         '''
         Add a subscription to the graph
         '''
-        self._subscriptions[subscription.handle] = subscription
+        self._subscriptions.append(subscription)
         node = self.node_by_handle(subscription.node_handle)
         if node:
             subscription.node = node
@@ -176,22 +176,32 @@ class Graph:
         '''
         Get a list of all subscriptions in the graph
         '''
-        return list(self._subscriptions.values())
+        return self._subscriptions
 
     def subscription_by_handle(self, handle: int) -> Optional[Subscription]:
         '''
         Get a subscription using it's handle
         '''
-        if handle in self._subscriptions:
-            return self._subscriptions[handle]
+        for subscription in self._subscriptions:
+            if subscription.handle == handle:
+              return subscription
         return None
 
     def subscription_by_reference(self, reference: int) -> Optional[Subscription]:
         '''
         Get a subscription using it's callback reference
         '''
-        for subscription in self._subscriptions.values():
+        for subscription in self._subscriptions:
             if subscription.reference == reference:
+                return subscription
+        return None
+
+    def subscription_by_ipb(self, ipb_handle: int) -> Optional[Subscription]:
+        '''
+        Get a subscription using it's ipb handle
+        '''
+        for subscription in self._subscriptions:
+            if subscription.ipb_handle == ipb_handle:
                 return subscription
         return None
 
@@ -199,7 +209,7 @@ class Graph:
         '''
         Get a subscription using it's handle
         '''
-        for subscription in self._subscriptions.values():
+        for subscription in self._subscriptions:
             if subscription.rmw_handle == handle:
                 return subscription
         return None
@@ -208,7 +218,7 @@ class Graph:
         '''
         Get a subscription using it's DDS GUID
         '''
-        for subscription in self._subscriptions.values():
+        for subscription in self._subscriptions:
             if subscription.gid == gid:
                 return subscription
         return None

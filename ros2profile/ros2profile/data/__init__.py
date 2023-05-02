@@ -23,8 +23,8 @@ from .callback import Callback, CallbackEvent
 from .context import Context
 from .node import Node
 from .graph import Graph
-from .publisher import Publisher, PublishEvent
-from .subscription import Subscription, SubscriptionEvent
+from .publisher import Publisher, PublishEvent, IPPublishEvent, MessageInBuffer
+from .subscription import Subscription, SubscriptionEvent, IpSubscriptionEvent
 from .timer import Timer
 from . import constants
 
@@ -77,8 +77,10 @@ def build_graph(
     rcl_events = event_data[constants.RCL_SUBSCRIPTION_INIT]
     rmw_events = event_data[constants.RMW_SUBSCRIPTION_INIT]
     dds_events = event_data[constants.DDS_CREATE_READER]
+    ipb_to_subscription_events = event_data[constants.RCLCPP_IPB_TO_SUBSCRIPTION]
+    buffer_to_typed_ipb_events = event_data[constants.RCLCPP_BUFFER_TO_TYPED_IPB]
     _build_subscriptions(
-        ret, rclcpp_events, rclcpp_cb_events, rcl_events, rmw_events, dds_events
+        ret, rclcpp_events, rclcpp_cb_events, rcl_events, rmw_events, dds_events, ipb_to_subscription_events, buffer_to_typed_ipb_events,
     )
 
     timer_init_events = event_data[constants.RCL_TIMER_INIT]
@@ -106,6 +108,14 @@ def build_graph(
             dds_write_events,
         )
 
+        rclcpp_intra_publish_events = event_data[constants.RCLCPP_INTRA_PUBLISH]
+        ring_buffer_enqueue_events = event_data[constants.RCLCPP_RINGBUFFER_ENQUEUE]
+        _build_ip_publish_events(
+            ret,
+            rclcpp_intra_publish_events,
+            ring_buffer_enqueue_events,
+        )
+
     if process_subscription_events:
         rclcpp_take_events = event_data[constants.RCLCPP_TAKE]
         rcl_take_events = event_data[constants.RCL_TAKE]
@@ -113,6 +123,10 @@ def build_graph(
         dds_read_events = event_data[constants.DDS_READ]
         _build_subscription_events(
             ret, rclcpp_take_events, rcl_take_events, rmw_take_events, dds_read_events
+        )
+        ring_buffer_dequeue_events = event_data[constants.RCLCPP_RINGBUFFER_DEQUEUE]
+        _build_ip_subscription_events(
+            ret, ring_buffer_dequeue_events
         )
 
     if process_callback_events and process_timer_events:
@@ -227,6 +241,8 @@ def _build_subscriptions(
     rcl_events: RawEvents,
     rmw_events: RawEvents,
     dds_events: RawEvents,
+    ipb_to_subscription_events: RawEvents,
+    buffer_to_typed_ipb_events: RawEvents,
 ) -> None:
     ss = f"""Building subscriptions
     rclcpp events: {len(rclcpp_events)}
@@ -250,24 +266,28 @@ def _build_subscriptions(
     for event in rclcpp_events:
         found_sub = graph.subscription_by_handle(event["subscription_handle"])
         if found_sub is None:
-            # logging.debug(
-            #    "Could not associate rclcpp subscription with subscription", event
-            # )
             continue
+        if found_sub.reference:
+            import copy
+            old_sub = found_sub
+            found_sub = copy.deepcopy(old_sub)
+            graph.add_subscription(found_sub)
+            found_sub._sibbling = old_sub
+            old_sub._sibbling = found_sub
+
         found_sub.add_stamp("rclcpp_init_time", event["_timestamp"])
         found_sub.reference = event["subscription"]
 
     for event in rclcpp_cb_events:
         found_sub = graph.subscription_by_reference(event["subscription"])
         if found_sub is None:
-            # logging.debug(
-            #    "Could not associate rclcpp callback with subscription", event
-            # )
+            print("Could not associate rclcpp callback with subscription")
             continue
         found_sub.callback_handle = event["callback"]
         found_callback = graph.callback_by_handle(event["callback"])
         if found_callback:
             found_sub.callback = found_callback
+
 
     for event in rmw_events:
         found_sub = graph.subscription_by_rmw_handle(event["rmw_subscription_handle"])
@@ -289,6 +309,18 @@ def _build_subscriptions(
         found_sub.add_stamp("dds_init_time", event["_timestamp"])
         found_sub.dds_topic_name = event["topic_name"]
         found_sub.dds_reader_handle = event["reader"]
+
+    for event in ipb_to_subscription_events:
+        found_sub = graph.subscription_by_reference(event["subscription"])
+        if found_sub is None:
+            continue
+        found_sub.ipb_handle = event["IPB"]
+
+    for event in buffer_to_typed_ipb_events:
+        found_sub = graph.subscription_by_ipb(event["IPB"])
+        if found_sub is None:
+            continue
+        found_sub.buffer_handle = event['buffer']
 
     logger.info(f"Detected {len(graph.subscriptions)} subscriptions")
 
@@ -355,6 +387,8 @@ def _build_callback_events(
         if found_callback:
             found_callback.events().append(callback_event)
             callback_event._source = found_callback
+        else:
+            print("no callback found")
 
     for callback in graph._callbacks.values():
         callback._events.sort(key=lambda ev: ev._callback_start)
@@ -411,6 +445,49 @@ def _build_publish_events(
     for publisher in graph.publishers:
         publisher.events.sort(key=lambda ev: ev.timestamp())
 
+def _build_ip_publish_events(
+    graph: Graph,
+    rclcpp_intra_publish_events: RawEvents,
+    ring_buffer_enqueue_events: RawEvents,
+):
+    events_by_tid = defaultdict(list)
+    for event in rclcpp_intra_publish_events:
+        events_by_tid[event["vtid"]].append(event)
+    for event in ring_buffer_enqueue_events:
+        events_by_tid[event["vtid"]].append(event)
+
+    publish_events: List[IPPublishEvent] = []
+
+    for event_stream in events_by_tid.values():
+        event_stream = sorted(event_stream, key=lambda x: (x["_timestamp"]))
+        cur_event = None
+        for entry in event_stream:
+            if entry["_name"] == constants.RCLCPP_INTRA_PUBLISH:
+                    if cur_event:
+                        publish_events.append(cur_event)
+                    cur_event = IPPublishEvent(entry["message"])
+                    cur_event.publisher_handle = entry["publisher_handle"]
+                    cur_event.add_stamp(constants.RCLCPP_INTRA_PUBLISH, entry["_timestamp"])
+            elif entry["_name"] == constants.RINGBUFFER_ENQUEUE:
+                    cur_event.add_stamp(constants.RINGBUFFER_ENQUEUE, entry["_timestamp"])
+                    cur_event.add_message_in_buffer(entry["buffer"], entry["index"])
+
+        if cur_event:
+            publish_events.append(cur_event)
+
+
+    logger.info("Found %i publish events", len(publish_events))
+
+    for pub_event in publish_events:
+        found_publisher = graph.publisher_by_handle(pub_event.publisher_handle)
+        if found_publisher:
+            pub_event.source = found_publisher
+            found_publisher.events.append(pub_event)
+            for mib in pub_event._messages_in_buffer:
+              found_publisher.buffer_handles.add(mib.buffer)
+
+    for publisher in graph.publishers:
+        publisher.events.sort(key=lambda ev: ev.timestamp())
 
 def _build_subscription_events(
     graph: Graph,
@@ -465,6 +542,30 @@ def _build_subscription_events(
     for subscription in graph.subscriptions:
         subscription.events.sort(key=lambda ev: ev.timestamp())
 
+def _build_ip_subscription_events(
+    graph: Graph,
+    ring_buffer_dequeue_events: RawEvents,
+):
+    events = defaultdict(list)
+
+    read_events: List[IpSubscriptionEvent] = []
+
+    for entry in ring_buffer_dequeue_events:
+        event = IpSubscriptionEvent(entry["buffer"], entry["index"])
+        event.add_stamp(entry["_name"], entry["_timestamp"])
+        read_events.append(event)
+
+
+    subs_by_buffer = {}
+    for sub in graph.subscriptions:
+        subs_by_buffer[sub.buffer_handle] = sub
+
+    for read_event in read_events:
+        subs_by_buffer[read_event.buffer_handle].events.append(read_event)
+        read_event.source = subs_by_buffer[read_event.buffer_handle]
+
+    for subscription in graph.subscriptions:
+        subscription.events.sort(key=lambda ev: ev.timestamp())
 
 def _associate_subscription_callbacks(graph: Graph):
     for subscription in graph.subscriptions:
@@ -473,10 +574,12 @@ def _associate_subscription_callbacks(graph: Graph):
         subscription.callback.source = subscription
 
         if len(sub_events) == 0:
-            print(f"No events for subscription: {subscription.name}")
+            if subscription._sibbling and len(subscription._sibbling.events) == 0:
+                print(f"No events for subscription: {subscription.name}")
             continue
         if len(sub_cb_events) == 0:
-            print(f"No callback events for subscription: {subscription.name}")
+            if subscription._sibbling and len(subscription._sibbling.callback.events()) == 0:
+                print(f"No callback events for subscription: {subscription.name}")
             continue
 
         for sub_event, callback_event in zip(sub_events, sub_cb_events):
@@ -500,7 +603,8 @@ def _associate_subscription_event_to_publish_event(graph: Graph):
     def _associate(publisher: Publisher, subscription: Subscription):
         pubsub_events = []
         for event_idx, event in enumerate(subscription.events):
-            pubsub_events.append(
+            if not isinstance(event, IpSubscriptionEvent):
+                pubsub_events.append(
                 {
                     "type": "subscription",
                     "event_idx": event_idx,
@@ -508,13 +612,14 @@ def _associate_subscription_event_to_publish_event(graph: Graph):
                 }
             )
         for event_idx, event in enumerate(publisher.events):
-            pubsub_events.append(
-                {
-                    "type": "publication",
-                    "event_idx": event_idx,
-                    "timestamp": event._stamps["timestamp"],
-                }
-            )
+            if not isinstance(event, IPPublishEvent):
+                pubsub_events.append(
+                    {
+                        "type": "publication",
+                        "event_idx": event_idx,
+                        "timestamp": event._stamps["timestamp"],
+                    }
+                )
 
         pubsub_events = sorted(pubsub_events, key=lambda x: (x["timestamp"], x["type"]))
 
@@ -530,6 +635,45 @@ def _associate_subscription_event_to_publish_event(graph: Graph):
                 else:
                     cur_pub = None
 
+    def _associate_ip(publisher: Publisher, subscription: Subscription):
+        pubsub_events_by_buffer = defaultdict(list)
+        for event_idx, event in enumerate(subscription.events):
+            if isinstance(event, IpSubscriptionEvent):
+                pubsub_events_by_buffer[event.buffer_handle].append(
+                    {
+                        "type": "subscription",
+                        "event_idx": event_idx,
+                        "message_in_buffer" : MessageInBuffer(event.buffer_handle, event.index),
+                        "timestamp": event.timestamp()
+                    }
+                )
+        for event_idx, event in enumerate(publisher.events):
+            if isinstance(event, IPPublishEvent):
+                for event_in_buffer in event._messages_in_buffer:
+                    pubsub_events_by_buffer[event_in_buffer._buffer_handle].append(
+                        {
+                            "type": "publication",
+                            "event_idx": event_idx,
+                            "message_in_buffer": event_in_buffer,
+                            "timestamp": event.timestamp()
+                        }
+                    )
+
+        for [k, pubsub_events] in pubsub_events_by_buffer.items():
+            pubsub_events = sorted(pubsub_events, key=lambda x: (x["message_in_buffer"].index, x["timestamp"], x["type"]))
+
+            cur_pub: Optional[Dict[str, Any]] = None
+            for event in pubsub_events:
+                if event["type"] == "publication":
+                    cur_pub = event
+                elif event["type"] == "subscription":
+                    if not cur_pub or cur_pub["message_in_buffer"].index != event["message_in_buffer"].index:
+                        continue
+                    pub_event = publisher.events[cur_pub["event_idx"]]
+                    sub_event = subscription.events[event["event_idx"]]
+                    sub_event.trigger = pub_event
+                    cur_pub = None
+
     for topic in graph.topics:
         if len(topic.subscriptions) == 0 or len(topic.publishers) == 0:
             continue
@@ -540,7 +684,8 @@ def _associate_subscription_event_to_publish_event(graph: Graph):
                 if len(publisher.events) == 0:
                     continue
                 _associate(publisher, subscription)
-
+                if subscription.buffer_handle in publisher.buffer_handles:
+                    _associate_ip(publisher, subscription)
 
 def _associate_publish_events_to_timer_callbacks(graph: Graph):
     for node in graph.nodes:
@@ -553,8 +698,7 @@ def _associate_publish_events_to_subscription_callbacks(graph: Graph):
     for node in graph.nodes:
         for subscription in node.subscriptions:
             for publisher in node.publishers:
-                if abs(len(publisher.events) - len(subscription.callback.events())) < 5:
-                    _associate_publisher_to_callback(publisher, subscription.callback)
+                _associate_publisher_to_callback(publisher, subscription.callback)
 
 def _associate_publisher_to_callback(publisher: Publisher, callback: Callback):
     pub_idx = 0

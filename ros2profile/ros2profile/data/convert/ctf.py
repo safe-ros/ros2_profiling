@@ -69,6 +69,11 @@ BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
     "symbol": str,
     "state_machine": int,
     "gid": lambda x: list(map(int, x)),
+    "ipb": int,
+    "capacity": int,
+    "index": int,
+    "size": int,
+    "overwritten": bool,
 }
 
 LTTNG_IGNORE_NAMES = [

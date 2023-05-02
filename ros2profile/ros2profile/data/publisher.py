@@ -17,33 +17,11 @@ from rclpy.expand_topic_name import expand_topic_name
 
 from .graph_entity import GraphEntity
 
-
-class PublishEvent:
-    def __init__(self, message_handle: int) -> None:
-        self._handle: int = message_handle
-        self._publisher_handle: int
-        self._dds_writer: int
-
+class PublishEventBase:
+    def __init__(self) -> None:
         self._trigger = None
         self._source: Publisher
-
         self._stamps: Dict[str, int] = {}
-
-    @property
-    def publisher_handle(self) -> int:
-        return self._publisher_handle
-
-    @publisher_handle.setter
-    def publisher_handle(self, value: int) -> None:
-        self._publisher_handle = value
-
-    @property
-    def dds_writer(self) -> int:
-        return self._dds_writer
-
-    @dds_writer.setter
-    def dds_writer(self, value: int) -> None:
-        self._dds_writer = value
 
     @property
     def source(self) -> 'Publisher':
@@ -61,6 +39,52 @@ class PublishEvent:
     def trigger(self, value: Any):
         self._trigger = value
 
+    def add_message_in_buffer(self, buffer_handle: int, index: int) -> None:
+        self._messages_in_buffer.append(MessageInBuffer(buffer_handle, index))
+
+    def add_stamp(self, key: str, value: int) -> None:
+        """
+        Add a timestamp to this graph entity
+        """
+        self._stamps[key] = value
+
+    def timestamp(self) -> int:
+        return min(self._stamps.values())
+
+class MessageInBuffer:
+    def __init__(self, buffer_handle: int, index: int) -> None:
+        self._buffer_handle: int = buffer_handle
+        self._index: int = index 
+
+    @property
+    def buffer(self) -> int:
+        return self._buffer_handle
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+    def __eq__(self, other):
+        return self._buffer_handle == other._buffer_handle and self._index == other._index
+
+    def __repr__(self) -> str:
+        return f"<MessageInBuffer buffer_handle={self._buffer_handle} index={self._index}>"
+
+class IPPublishEvent(PublishEventBase):
+    def __init__(self, message_handle: int) -> None:
+        super().__init__()
+        self._handle: int = message_handle
+        self._publisher_handle: int
+        self._messages_in_buffer: List[MessageInBuffer] = []
+
+    @property
+    def publisher_handle(self) -> int:
+        return self._publisher_handle
+
+    @publisher_handle.setter
+    def publisher_handle(self, value: int) -> None:
+        self._publisher_handle = value
+
 
     def __repr__(self) -> str:
         return f"<PublishEvent handle={self._handle}>"
@@ -71,9 +95,32 @@ class PublishEvent:
         '''
         self._stamps[key] = value
 
-    def timestamp(self) -> int:
-        return min(self._stamps.values())
 
+class PublishEvent(PublishEventBase):
+    def __init__(self, message_handle: int) -> None:
+        super().__init__()
+        self._handle: int = message_handle
+        self._publisher_handle: int
+        self._dds_writer: int
+
+    @property
+    def publisher_handle(self) -> int:
+        return self._publisher_handle
+
+    @publisher_handle.setter
+    def publisher_handle(self, value: int) -> None:
+        self._publisher_handle = value
+
+    @property
+    def dds_writer(self) -> int:
+        return self._dds_writer
+
+    @dds_writer.setter
+    def dds_writer(self, value: int) -> None:
+        self._dds_writer = value
+
+    def __repr__(self) -> str:
+        return f"<PublishEvent handle={self._handle}>"
 
 class Publisher(GraphEntity):
     def __init__(
@@ -98,6 +145,7 @@ class Publisher(GraphEntity):
         self._dds_writer: int
 
         self._events: List[PublishEvent] = []
+        self._buffer_handles = set()
 
     @property
     def name(self) -> str:
@@ -150,6 +198,13 @@ class Publisher(GraphEntity):
         List of events corresponding to this publisher
         """
         return self._events
+
+    @property
+    def buffer_handles(self):
+        """
+        List of buffer handles this publisher publisher writes to
+        """
+        return self._buffer_handles
 
     def __repr__(self) -> str:
         return f"<Publisher handle={self._handle} topic_name={self.name}>"

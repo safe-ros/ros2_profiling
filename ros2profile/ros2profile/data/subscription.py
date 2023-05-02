@@ -19,19 +19,62 @@ from rclpy.expand_topic_name import expand_topic_name
 from .callback import Callback
 from .graph_entity import GraphEntity
 
-
-class SubscriptionEvent:
+class SubscriptionEventBase:
     def __init__(self) -> None:
+        self._trigger = None
+        self._source: Subscription
+
+        self._stamps: Dict[str, int] = {}
+
+    @property
+    def source(self) -> "Subscription":
+        return self._source
+
+    @source.setter
+    def source(self, value: "Subscription") -> None:
+        self._source = value
+
+    @property
+    def trigger(self) -> Any:
+        return self._trigger
+
+    @trigger.setter
+    def trigger(self, value: Any):
+        self._trigger = value
+
+    def add_stamp(self, key: str, value: int) -> None:
+        """
+        Add a timestamp to this graph entity
+        """
+        self._stamps[key] = value
+
+    def timestamp(self) -> int:
+        return min(self._stamps.values())
+
+
+class IpSubscriptionEvent(SubscriptionEventBase):
+    def __init__(self, buffer_handle: int, index: int) -> None:
+        super().__init__()
+        self._buffer_handle: int = buffer_handle
+        self._index: int = index
+
+    @property
+    def buffer_handle(self) -> int:
+        return self._buffer_handle
+
+    @property
+    def index(self) -> int:
+        return self._index
+
+class SubscriptionEvent(SubscriptionEventBase):
+    def __init__(self) -> None:
+        super().__init__()
         self._handle: int
         self._rmw_subscription_handle: int
         self._dds_reader: int
 
-        self._trigger = None
-        self._source: Subscription
         self._source_timestamp: int
         self._taken: bool
-
-        self._stamps: Dict[str, int] = {}
 
     @property
     def message_handle(self) -> int:
@@ -58,14 +101,6 @@ class SubscriptionEvent:
         self._dds_reader = value
 
     @property
-    def source(self) -> "Subscription":
-        return self._source
-
-    @source.setter
-    def source(self, value: "Subscription") -> None:
-        self._source = value
-
-    @property
     def taken(self) -> bool:
         return self._taken
 
@@ -81,26 +116,8 @@ class SubscriptionEvent:
     def source_timestamp(self, value: int) -> None:
         self._source_timestamp = value
 
-    @property
-    def trigger(self) -> Any:
-        return self._trigger
-
-    @trigger.setter
-    def trigger(self, value: Any):
-        self._trigger = value
-
     def __repr__(self) -> str:
         return f"<SubscriptionEvent handle={self._handle}>"
-
-    def add_stamp(self, key: str, value: int) -> None:
-        """
-        Add a timestamp to this graph entity
-        """
-        self._stamps[key] = value
-
-    def timestamp(self) -> int:
-        return min(self._stamps.values())
-
 
 class Subscription(GraphEntity):
     def __init__(
@@ -116,9 +133,9 @@ class Subscription(GraphEntity):
             rmw_handle=rmw_subscription_handle,
             node_handle=node_handle,
         )
-        self._gid: List[int]
+        self._gid: List[int] = None
 
-        self._reference: int
+        self._reference: int = None
         self._topic_name: str = topic_name
         self._queue_depth: int = queue_depth
 
@@ -128,6 +145,10 @@ class Subscription(GraphEntity):
         self._callback_handle: int
         self._callback: Callback
         self._events: List[SubscriptionEvent] = []
+
+        self._ipb_handle: int = None
+        self._buffer_handle: int = None
+        self._sibbling: Suscription = None
 
     @property
     def name(self) -> str:
@@ -214,5 +235,28 @@ class Subscription(GraphEntity):
         """
         return self._events
 
+    @property
+    def ipb_handle(self) -> int:
+        """
+        Interprocess Buffer handle associated with this subscription.
+        """
+        return self._ipb_handle
+
+    @ipb_handle.setter
+    def ipb_handle(self, value: int) -> None:
+        self._ipb_handle = value
+
+    @property
+    def buffer_handle(self) -> int:
+        """
+        Interprocess Buffer handle associated with this subscription.
+        """
+        return self._buffer_handle
+
+    @buffer_handle.setter
+    def buffer_handle(self, value: int) -> None:
+        self._buffer_handle = value
+
     def __repr__(self) -> str:
         return f"<Subscription handle={self._handle} topic_name={self.name}>"
+
