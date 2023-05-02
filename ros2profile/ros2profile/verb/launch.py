@@ -71,6 +71,8 @@ class LaunchVerb(VerbExtension):
 
         events_kernel = []
         events_ust = ['dds:*', 'ros2:*']
+        subbuffer_size_kernel = 32 * 4096
+        subbuffer_size_ust = 8 * 4092
 
         if 'record_path' in config:
             base_path = config['record_path']
@@ -85,12 +87,16 @@ class LaunchVerb(VerbExtension):
                     events_kernel = trace_config['kernel']['events']
                 if 'context_field' in trace_config['kernel']:
                     context_fields['kernel'] = trace_config['kernel']['context_fields']
+                if 'subbuffer_size' in trace_config['kernel']:
+                    subbuffer_size_kernel = context_fields['subbuffer_size']['subbuffer_size']
 
             if 'ust' in trace_config:
                 if 'events' in trace_config['ust']:
                     events_ust = trace_config['ust']['events']
                 if 'context_field' in trace_config['ust']:
                     context_fields['userspace'] = trace_config['ust']['context_fields']
+                if 'subbuffer_size' in trace_config['ust']:
+                    subbuffer_size_ust = context_fields['ust']['subbuffer_size']
 
         if len(events_kernel) == 0:
             del context_fields['kernel']
@@ -113,7 +119,9 @@ class LaunchVerb(VerbExtension):
             append_timestamp=append_timestamp,
             events_kernel=events_kernel,
             events_ust=events_ust,
-            context_fields=context_fields
+            context_fields=context_fields,
+            subbuffer_size_ust=subbuffer_size_ust,
+            subbuffer_size_kernel=subbuffer_size_kernel
         ))
 
         def on_start(event: launch.events.process.ProcessStarted,
