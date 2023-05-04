@@ -143,7 +143,7 @@ class Subscription(GraphEntity):
         self._dds_reader: int
 
         self._callback_handle: int
-        self._callback: Callback
+        self._callback: Callback = None
         self._events: List[SubscriptionEvent] = []
 
         self._ipb_handle: int = None

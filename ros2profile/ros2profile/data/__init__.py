@@ -570,13 +570,19 @@ def _build_ip_subscription_events(
 def _associate_subscription_callbacks(graph: Graph):
     for subscription in graph.subscriptions:
         sub_events = subscription.events
-        sub_cb_events = subscription.callback.events()
-        subscription.callback.source = subscription
 
         if len(sub_events) == 0:
             if subscription._sibbling and len(subscription._sibbling.events) == 0:
                 print(f"No events for subscription: {subscription.name}")
             continue
+
+        if subscription.callback == None:
+            print(f"No callback for subscription: {subscription.name}")
+            continue
+
+        sub_cb_events = subscription.callback.events()
+        subscription.callback.source = subscription
+
         if len(sub_cb_events) == 0:
             if subscription._sibbling and len(subscription._sibbling.callback.events()) == 0:
                 print(f"No callback events for subscription: {subscription.name}")
@@ -697,6 +703,8 @@ def _associate_publish_events_to_timer_callbacks(graph: Graph):
 def _associate_publish_events_to_subscription_callbacks(graph: Graph):
     for node in graph.nodes:
         for subscription in node.subscriptions:
+            if subscription.callback == None:
+                continue
             for publisher in node.publishers:
                 _associate_publisher_to_callback(publisher, subscription.callback)
 
