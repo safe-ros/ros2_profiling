@@ -314,10 +314,10 @@ def _build_subscriptions(
         found_sub = graph.subscription_by_reference(event["subscription"])
         if found_sub is None:
             continue
-        found_sub.ipb_handle = event["IPB"]
+        found_sub.ipb_handle = event["ipb"]
 
     for event in buffer_to_typed_ipb_events:
-        found_sub = graph.subscription_by_ipb(event["IPB"])
+        found_sub = graph.subscription_by_ipb(event["ipb"])
         if found_sub is None:
             continue
         found_sub.buffer_handle = event['buffer']
@@ -468,8 +468,8 @@ def _build_ip_publish_events(
                     cur_event = IPPublishEvent(entry["message"])
                     cur_event.publisher_handle = entry["publisher_handle"]
                     cur_event.add_stamp(constants.RCLCPP_INTRA_PUBLISH, entry["_timestamp"])
-            elif entry["_name"] == constants.RINGBUFFER_ENQUEUE:
-                    cur_event.add_stamp(constants.RINGBUFFER_ENQUEUE, entry["_timestamp"])
+            elif entry["_name"] == constants.RCLCPP_RINGBUFFER_ENQUEUE:
+                    cur_event.add_stamp(constants.RCLCPP_RINGBUFFER_ENQUEUE, entry["_timestamp"])
                     cur_event.add_message_in_buffer(entry["buffer"], entry["index"])
 
         if cur_event:
