@@ -72,7 +72,7 @@ class LaunchVerb(VerbExtension):
         events_kernel = []
         events_ust = ['dds:*', 'ros2:*']
         subbuffer_size_kernel = 32 * 4096
-        subbuffer_size_ust = 8 * 4092
+        subbuffer_size_ust = 8 * 4096
 
         if 'record_path' in config:
             base_path = config['record_path']
