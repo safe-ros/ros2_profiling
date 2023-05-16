@@ -140,7 +140,7 @@ class Subscription(GraphEntity):
         self._queue_depth: int = queue_depth
 
         self._dds_topic_name: str
-        self._dds_reader: int
+        self._dds_reader: int = None
 
         self._callback_handle: int
         self._callback: Callback

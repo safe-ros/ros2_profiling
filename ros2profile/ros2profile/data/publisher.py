@@ -100,6 +100,7 @@ class PublishEvent(PublishEventBase):
     def __init__(self, message_handle: int) -> None:
         super().__init__()
         self._handle: int = message_handle
+        self._rmw_handle: int
         self._publisher_handle: int
         self._dds_writer: int
 
@@ -110,6 +111,14 @@ class PublishEvent(PublishEventBase):
     @publisher_handle.setter
     def publisher_handle(self, value: int) -> None:
         self._publisher_handle = value
+
+    @property
+    def rmw_handle(self) -> int:
+        return self._rmw_handle
+
+    @rmw_handle.setter
+    def rmw_handle(self, value: int) -> None:
+        self._rmw_handle = value
 
     @property
     def dds_writer(self) -> int:
