@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from typing import Dict, Any, List, Optional
 
 from collections import defaultdict
 
+import importlib
 import logging
 import os
 
@@ -147,6 +149,12 @@ def build_graph(
         and process_subscription_events
     ):
         _associate_publish_events_to_subscription_callbacks(ret)
+
+    for name, ep in importlib.metadata.entry_points(group='ros2profile.extend_graph'):
+        logger.debug(f"Executing custom extension '{name}'.")
+        extend_graph = ep.load()
+        extend_graph(ret, event_data)
+
     return ret
 
 
