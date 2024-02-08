@@ -91,6 +91,12 @@ BT2_CONV_FUNC: Dict[str, ConversionFunction] = {
 
 }
 
+import importlib
+
+for field_name, conversion_function  in importlib.metadata.entry_points(group='ros2profile.custom_conversion_functions'):
+    logging.debug("Add custom conversion function for " + field_name)
+    BT2_CONV_FUNC[field_name] = conversion_function.load()
+
 LTTNG_IGNORE_NAMES = [
     "kmem_mm_page_alloc",
     "kmem_mm_page_free",
